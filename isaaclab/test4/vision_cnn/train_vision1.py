@@ -1,5 +1,3 @@
-# train_vision.py
-
 from __future__ import annotations
 
 import argparse
@@ -13,7 +11,7 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
-from vision_model import build_vision_model, compute_vision_losses
+from vision_model1 import build_vision_model, compute_vision_losses
 
 
 def set_seed(seed: int) -> None:
@@ -23,78 +21,89 @@ def set_seed(seed: int) -> None:
 
 
 class VisionChunkDataset(Dataset):
-    """
-    Reads dataset chunks saved by collect_vision_data.py.
+    """Read vision dataset chunks for direction-only training.
 
-    Expected file format (.pt):
-    {
-        "images": Tensor [N, T, 3, H, W],
-        "direction": Tensor [N, 2],
-        "velocity": Tensor [N, 3],
-        "state": Tensor [N, 10],
-        "meta": {...}
-    }
+    Supported image formats:
+    - images: [N, 3, H, W]
+    - images: [N, T, 3, H, W]
+
+    Required labels used by this script:
+    - direction: [N, 2]
+    - dog_moving_flag: [N, 1]
+
+    Optional fields can still exist in the chunk, but are ignored here.
     """
 
     def __init__(
         self,
-        root_dir: str | Path,
+        root_dirs: str | Path | list[str] | list[Path],
         normalize_images: bool = True,
-        max_files: int | None = None,
+        max_files_per_dir: int | None = None,
     ):
-        self.root_dir = Path(root_dir).expanduser()
-        if not self.root_dir.is_dir():
-            raise FileNotFoundError(f"Dataset directory not found: {self.root_dir}")
+        if isinstance(root_dirs, (str, Path)):
+            self.root_dirs = [Path(root_dirs).expanduser()]
+        else:
+            self.root_dirs = [Path(p).expanduser() for p in root_dirs]
 
-        self.files = sorted(self.root_dir.glob("vision_chunk_*.pt"))
+        for root_dir in self.root_dirs:
+            if not root_dir.is_dir():
+                raise FileNotFoundError(f"Dataset directory not found: {root_dir}")
+
+        self.files: list[Path] = []
+        for root_dir in self.root_dirs:
+            files = sorted(root_dir.glob("vision_chunk_*.pt"))
+            if len(files) == 0:
+                raise FileNotFoundError(f"No vision_chunk_*.pt found under: {root_dir}")
+            if max_files_per_dir is not None:
+                files = files[:max_files_per_dir]
+            self.files.extend(files)
+
         if len(self.files) == 0:
-            raise FileNotFoundError(f"No vision_chunk_*.pt found under: {self.root_dir}")
-
-        if max_files is not None:
-            self.files = self.files[:max_files]
+            raise FileNotFoundError("No dataset files found from the provided root_dirs.")
 
         self.normalize_images = normalize_images
-
         self.samples: list[tuple[int, int]] = []
         self.file_lengths: list[int] = []
         self._cache: dict[int, dict] = {}
 
         for file_idx, file_path in enumerate(self.files):
             payload = torch.load(file_path, map_location="cpu")
+
+            if "images" not in payload:
+                raise KeyError(f"{file_path} missing required field: images")
+            if "direction" not in payload:
+                raise KeyError(f"{file_path} missing required field: direction")
+            if "dog_moving_flag" not in payload:
+                raise KeyError(f"{file_path} missing required field: dog_moving_flag")
+
             images = payload["images"]
             direction = payload["direction"]
-            velocity = payload["velocity"]
-            state = payload["state"]
+            dog_moving_flag = payload["dog_moving_flag"]
 
-            if images.ndim != 5:
+            if images.ndim not in (4, 5):
                 raise ValueError(f"{file_path} images shape invalid: {tuple(images.shape)}")
             if direction.ndim != 2 or direction.shape[-1] != 2:
                 raise ValueError(f"{file_path} direction shape invalid: {tuple(direction.shape)}")
-            if velocity.ndim != 2 or velocity.shape[-1] != 3:
-                raise ValueError(f"{file_path} velocity shape invalid: {tuple(velocity.shape)}")
-            if state.ndim != 2 or state.shape[-1] != 10:
-                raise ValueError(f"{file_path} state shape invalid: {tuple(state.shape)}")
+            if dog_moving_flag.ndim != 2 or dog_moving_flag.shape[-1] != 1:
+                raise ValueError(f"{file_path} dog_moving_flag shape invalid: {tuple(dog_moving_flag.shape)}")
 
             n = images.shape[0]
-            if direction.shape[0] != n or velocity.shape[0] != n or state.shape[0] != n:
+            if direction.shape[0] != n or dog_moving_flag.shape[0] != n:
                 raise ValueError(f"{file_path} sample count mismatch")
 
             self.file_lengths.append(n)
             for sample_idx in range(n):
                 self.samples.append((file_idx, sample_idx))
 
-        print(f"[dataset] found {len(self.files)} chunk files")
+        print(f"[dataset] found {len(self.files)} chunk files from {len(self.root_dirs)} directories")
         print(f"[dataset] total samples: {len(self.samples)}")
 
     def __len__(self) -> int:
         return len(self.samples)
 
     def _load_file(self, file_idx: int) -> dict:
-        # 如果当前需要的文件不在缓存中
         if file_idx not in self._cache:
-            # 清空缓存中所有其他的 chunk，释放内存！
-            self._cache.clear() 
-            # 加载新文件
+            self._cache.clear()
             self._cache[file_idx] = torch.load(self.files[file_idx], map_location="cpu")
         return self._cache[file_idx]
 
@@ -102,20 +111,17 @@ class VisionChunkDataset(Dataset):
         file_idx, sample_idx = self.samples[index]
         payload = self._load_file(file_idx)
 
-        images = payload["images"][sample_idx].float()       # [T, 3, H, W]
-        direction = payload["direction"][sample_idx].float() # [2]
-        velocity = payload["velocity"][sample_idx].float()   # [3]
-        state = payload["state"][sample_idx].float()[4:]         # [6] (root_ang_vel_b + projected_gravity_b)
+        images = payload["images"][sample_idx].float()                     # [3,H,W] or [T,3,H,W]
+        direction = payload["direction"][sample_idx].float()               # [2]
+        dog_moving_flag = payload["dog_moving_flag"][sample_idx].float()   # [1]
 
-        if self.normalize_images:
-            if images.max() > 1.5:
-                images = images / 255.0
+        if self.normalize_images and images.numel() > 0 and images.max() > 1.5:
+            images = images / 255.0
 
         return {
             "images": images,
             "direction": direction,
-            "velocity": velocity,
-            "state": state,
+            "dog_moving_flag": dog_moving_flag,
         }
 
 
@@ -134,109 +140,108 @@ class RunningAverage:
 
 
 def split_indices_by_chunk(samples: list[tuple[int, int]], val_ratio: float, seed: int) -> tuple[list[int], list[int]]:
-    """按 Chunk(文件) 划分训练集和验证集，防止时序数据泄漏"""
-    # 提取所有不重复的 chunk 索引
+    """按 chunk(文件) 划分训练集和验证集，防止数据泄漏。"""
     unique_chunks = list(set([file_idx for file_idx, _ in samples]))
     rng = random.Random(seed)
     rng.shuffle(unique_chunks)
 
-    # 划分 chunk
     val_chunk_count = max(1, int(len(unique_chunks) * val_ratio))
     val_chunks = set(unique_chunks[:val_chunk_count])
-    
+
     train_indices = []
     val_indices = []
-    
-    # 遍历所有样本，根据其所属的 chunk 归入对应的数据集
     for idx, (file_idx, _) in enumerate(samples):
         if file_idx in val_chunks:
             val_indices.append(idx)
         else:
             train_indices.append(idx)
-            
+
     return train_indices, val_indices
 
+
 class SubsetChunkSampler(torch.utils.data.Sampler):
-    """
-    按数据块（Chunk）分组读取的采样器。
-    保证同一个 Chunk 的数据被连续读取，避免硬盘频繁切换和缓存疯狂重载。
-    """
+    """按 chunk 连续读取，减少频繁切换文件。"""
+
     def __init__(self, subset: torch.utils.data.Subset, shuffle: bool = True):
         self.subset = subset
         self.shuffle = shuffle
 
         dataset = cast(VisionChunkDataset, self.subset.dataset)
-        
-        # 将 subset 中的索引按其对应的 chunk 文件分组
-        self.chunk_to_subset_idx = {}
+        self.chunk_to_subset_idx: dict[int, list[int]] = {}
         for subset_idx, dataset_idx in enumerate(self.subset.indices):
             file_idx, _ = dataset.samples[dataset_idx]
-            if file_idx not in self.chunk_to_subset_idx:
-                self.chunk_to_subset_idx[file_idx] = []
-            self.chunk_to_subset_idx[file_idx].append(subset_idx)
-            
+            self.chunk_to_subset_idx.setdefault(file_idx, []).append(subset_idx)
+
     def __iter__(self):
-        # 1. 随机打乱 Chunk 的读取顺序
         chunk_order = list(self.chunk_to_subset_idx.keys())
         if self.shuffle:
             random.shuffle(chunk_order)
-            
-        final_indices = []
+
+        final_indices: list[int] = []
         for chunk_idx in chunk_order:
             indices = self.chunk_to_subset_idx[chunk_idx].copy()
-            # 2. 随机打乱该 Chunk 内部的数据顺序
             if self.shuffle:
                 random.shuffle(indices)
             final_indices.extend(indices)
-            
         return iter(final_indices)
-        
+
     def __len__(self) -> int:
         return len(self.subset)
 
-def evaluate(
-    model: nn.Module,
-    loader: DataLoader,
-    device: torch.device,
-) -> dict[str, float]:
+
+def evaluate(model: nn.Module, loader: DataLoader, device: torch.device) -> dict[str, float]:
     model.eval()
 
     loss_meter = RunningAverage()
     dir_meter = RunningAverage()
-    vel_meter = RunningAverage()
+    yaw_mae_meter = RunningAverage()
+    pitch_mae_meter = RunningAverage()
 
     with torch.no_grad():
         for batch in loader:
             images = batch["images"].to(device, non_blocking=True)
             gt_direction = batch["direction"].to(device, non_blocking=True)
-            gt_velocity = batch["velocity"].to(device, non_blocking=True)
-            state = batch["state"].to(device, non_blocking=True)
+            dog_moving_flag = batch["dog_moving_flag"].to(device, non_blocking=True)
 
-            out = model(images, proprio=state)
+            out = model(images, proprio=dog_moving_flag)
+
+            dummy_gt_velocity = torch.zeros((gt_direction.shape[0], 3), device=device, dtype=gt_direction.dtype)
             loss_dict = compute_vision_losses(
                 pred_direction=out.direction,
                 pred_velocity=out.velocity,
                 gt_direction=gt_direction,
-                gt_velocity=gt_velocity,
-                direction_weight=1.0,  # 方向权重保持不变
-                velocity_weight=3.0,   # 【新增】强迫网络重视速度！
+                gt_velocity=dummy_gt_velocity,
+                direction_weight=1.0,
+                velocity_weight=0.0,
             )
+
+            yaw_diff = out.direction[:, 0] - gt_direction[:, 0]
+            yaw_err = torch.atan2(torch.sin(yaw_diff), torch.cos(yaw_diff)).abs()
+            pitch_err = torch.abs(out.direction[:, 1] - gt_direction[:, 1])
 
             batch_size = images.shape[0]
             loss_meter.update(float(loss_dict["loss"].item()), batch_size)
             dir_meter.update(float(loss_dict["direction_loss"].item()), batch_size)
-            vel_meter.update(float(loss_dict["velocity_loss"].item()), batch_size)
+            yaw_mae_meter.update(float(yaw_err.mean().item()), batch_size)
+            pitch_mae_meter.update(float(pitch_err.mean().item()), batch_size)
 
     return {
         "loss": loss_meter.avg,
         "direction_loss": dir_meter.avg,
-        "velocity_loss": vel_meter.avg,
+        "yaw_mae_rad": yaw_mae_meter.avg,
+        "pitch_mae_rad": pitch_mae_meter.avg,
     }
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--dataset_dir", type=str, required=True)
+    parser = argparse.ArgumentParser(description="Train vision model for direction only.")
+    parser.add_argument(
+        "--dataset_dirs",
+        type=str,
+        nargs="+",
+        required=True,
+        help="One or more dataset directories.",
+    )
     parser.add_argument("--out_dir", type=str, default="vision_runs")
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--epochs", type=int, default=30)
@@ -246,7 +251,6 @@ def main():
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max_files", type=int, default=None)
-    parser.add_argument("--save_every", type=int, default=5)
     args = parser.parse_args()
 
     set_seed(args.seed)
@@ -258,12 +262,11 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     dataset = VisionChunkDataset(
-        root_dir=args.dataset_dir,
+        root_dirs=args.dataset_dirs,
         normalize_images=True,
-        max_files=args.max_files,
+        max_files_per_dir=args.max_files,
     )
 
-    # 使用新的按 chunk 划分函数
     train_indices, val_indices = split_indices_by_chunk(dataset.samples, args.val_ratio, args.seed)
     if len(train_indices) == 0:
         raise ValueError("No training samples after split. Reduce --val_ratio or collect more data.")
@@ -274,17 +277,16 @@ def main():
     train_subset = torch.utils.data.Subset(dataset, train_indices)
     val_subset = torch.utils.data.Subset(dataset, val_indices)
 
-    # 使用自定义的 Chunk 采样器
     train_sampler = SubsetChunkSampler(train_subset, shuffle=True)
     train_loader = DataLoader(
         train_subset,
         batch_size=args.batch_size,
-        sampler=train_sampler,  # 使用 sampler 时，不能再写 shuffle=True
+        sampler=train_sampler,
         num_workers=args.num_workers,
         pin_memory=torch.cuda.is_available(),
         drop_last=False,
     )
-    
+
     val_sampler = SubsetChunkSampler(val_subset, shuffle=False)
     val_loader = DataLoader(
         val_subset,
@@ -295,13 +297,10 @@ def main():
         drop_last=False,
     )
 
-    model = build_vision_model(use_proprio=True, proprio_dim=6)
-    
-    # 自动检测并使用多卡 (DataParallel)
+    model = build_vision_model(use_proprio=True, proprio_dim=1)
     if torch.cuda.device_count() > 1:
-        print(f"[train] 🚀 激活算力怪兽！检测到 {torch.cuda.device_count()} 张 GPU，启用 nn.DataParallel。")
+        print(f"[train] detected {torch.cuda.device_count()} GPUs, enabling nn.DataParallel.")
         model = nn.DataParallel(model)
-        
     model = model.to(device)
 
     optimizer = torch.optim.AdamW(
@@ -309,11 +308,7 @@ def main():
         lr=args.lr,
         weight_decay=args.weight_decay,
     )
-
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-        optimizer,
-        T_max=args.epochs,
-    )
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     best_val_loss = float("inf")
     best_path = out_dir / "vision_best.pth"
@@ -330,27 +325,26 @@ def main():
 
         train_loss_meter = RunningAverage()
         train_dir_meter = RunningAverage()
-        train_vel_meter = RunningAverage()
+        train_yaw_mae_meter = RunningAverage()
+        train_pitch_mae_meter = RunningAverage()
 
-        # 【添加进度追踪】
         num_batches = len(train_loader)
-        
         for batch_idx, batch in enumerate(train_loader):
-            images = batch["images"].to(device, non_blocking=True)             # [B,T,3,H,W]
-            gt_direction = batch["direction"].to(device, non_blocking=True)    # [B,2]
-            gt_velocity = batch["velocity"].to(device, non_blocking=True)      # [B,3]
-            state = batch["state"].to(device, non_blocking=True)               # [B,6]
+            images = batch["images"].to(device, non_blocking=True)
+            gt_direction = batch["direction"].to(device, non_blocking=True)
+            dog_moving_flag = batch["dog_moving_flag"].to(device, non_blocking=True)
 
             optimizer.zero_grad(set_to_none=True)
 
-            out = model(images, proprio=state)
+            out = model(images, proprio=dog_moving_flag)
+            dummy_gt_velocity = torch.zeros((gt_direction.shape[0], 3), device=device, dtype=gt_direction.dtype)
             loss_dict = compute_vision_losses(
                 pred_direction=out.direction,
                 pred_velocity=out.velocity,
                 gt_direction=gt_direction,
-                gt_velocity=gt_velocity,
-                direction_weight=1.0,  # 方向权重保持不变
-                velocity_weight=3.0,   # 【新增】强迫网络重视速度！
+                gt_velocity=dummy_gt_velocity,
+                direction_weight=1.0,
+                velocity_weight=0.0,
             )
 
             loss = loss_dict["loss"]
@@ -358,35 +352,39 @@ def main():
             torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
+            yaw_diff = out.direction[:, 0] - gt_direction[:, 0]
+            yaw_err = torch.atan2(torch.sin(yaw_diff), torch.cos(yaw_diff)).abs()
+            pitch_err = torch.abs(out.direction[:, 1] - gt_direction[:, 1])
+
             batch_size = images.shape[0]
-            train_loss_meter.update(float(loss_dict["loss"].item()), batch_size)
+            train_loss_meter.update(float(loss.item()), batch_size)
             train_dir_meter.update(float(loss_dict["direction_loss"].item()), batch_size)
-            train_vel_meter.update(float(loss_dict["velocity_loss"].item()), batch_size)
-            
-            # 【每跑 20 个 Batch 打印一次进度】
+            train_yaw_mae_meter.update(float(yaw_err.mean().item()), batch_size)
+            train_pitch_mae_meter.update(float(pitch_err.mean().item()), batch_size)
+
             if (batch_idx + 1) % 20 == 0 or (batch_idx + 1) == num_batches:
                 print(f"    [Epoch {epoch} | Batch {batch_idx + 1}/{num_batches}] Loss: {loss.item():.4f}")
 
         scheduler.step()
-
         val_metrics = evaluate(model, val_loader, device)
 
+        rad_to_deg = 180.0 / torch.pi
         print(
             f"[epoch {epoch:03d}] "
             f"train_loss={train_loss_meter.avg:.6f} "
             f"train_dir={train_dir_meter.avg:.6f} "
-            f"train_vel={train_vel_meter.avg:.6f} "
+            f"train_yaw={train_yaw_mae_meter.avg * float(rad_to_deg):.3f}deg "
+            f"train_pitch={train_pitch_mae_meter.avg * float(rad_to_deg):.3f}deg "
             f"val_loss={val_metrics['loss']:.6f} "
             f"val_dir={val_metrics['direction_loss']:.6f} "
-            f"val_vel={val_metrics['velocity_loss']:.6f}"
+            f"val_yaw={val_metrics['yaw_mae_rad'] * float(rad_to_deg):.3f}deg "
+            f"val_pitch={val_metrics['pitch_mae_rad'] * float(rad_to_deg):.3f}deg"
         )
 
         train_loss_history.append(train_loss_meter.avg)
         val_loss_history.append(val_metrics["loss"])
 
-        # 剥离 DataParallel 的 "module." 外壳，确保保存的权重可以被单卡无缝加载
         model_state = model.module.state_dict() if isinstance(model, nn.DataParallel) else model.state_dict()
-
         checkpoint = {
             "epoch": epoch,
             "model_state_dict": model_state,
@@ -394,17 +392,16 @@ def main():
             "scheduler_state_dict": scheduler.state_dict(),
             "best_val_loss": best_val_loss,
             "config": vars(args),
+            "task": "direction_only",
         }
 
         torch.save(checkpoint, last_path)
-
         if val_metrics["loss"] < best_val_loss:
             best_val_loss = val_metrics["loss"]
             checkpoint["best_val_loss"] = best_val_loss
             torch.save(checkpoint, best_path)
             print(f"[train] saved best checkpoint: {best_path}")
 
-    # Save loss curves
     try:
         import matplotlib.pyplot as plt
 
@@ -413,8 +410,8 @@ def main():
         plt.plot(epochs, train_loss_history, label="train_loss")
         plt.plot(epochs, val_loss_history, label="val_loss")
         plt.xlabel("Epoch")
-        plt.ylabel("Loss")
-        plt.title("Training/Validation Loss")
+        plt.ylabel("Direction Loss")
+        plt.title("Direction-Only Training/Validation Loss")
         plt.grid(True, linestyle="--", linewidth=0.5, alpha=0.6)
         plt.legend()
         plot_path = out_dir / "loss_curve.png"
