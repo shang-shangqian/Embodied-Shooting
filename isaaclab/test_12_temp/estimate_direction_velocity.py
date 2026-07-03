@@ -16,15 +16,12 @@ import torch
 THIS_DIR = Path(__file__).resolve().parent
 ISAACLAB_DIR = THIS_DIR.parent
 TEST_TEMP_DIR = ISAACLAB_DIR / "test_temp"
-if str(ISAACLAB_DIR) not in sys.path:
-    sys.path.insert(0, str(ISAACLAB_DIR))
-if str(TEST_TEMP_DIR) not in sys.path:
-    sys.path.insert(0, str(TEST_TEMP_DIR))
+for import_dir in (TEST_TEMP_DIR, ISAACLAB_DIR, THIS_DIR):
+    if str(import_dir) not in sys.path:
+        sys.path.insert(0, str(import_dir))
 
-from test10.camera_geometry import CameraIntrinsics
-from test12.estimate_video import build_intrinsics, load_initial_box
-from test12.ostrack_tracker import OSTrackBoxTracker
-from test12.pipeline import (
+from camera_geometry import CameraIntrinsics, build_intrinsics, load_initial_box
+from direction_pipeline import (
     FrameEstimate,
     estimate_target_direction_from_boxes,
     load_rgb_paths,
@@ -32,8 +29,8 @@ from test12.pipeline import (
     tracked_boxes_to_map,
     write_overlays,
 )
-from speed_prediction_model import VelocityPredictorGRU
-
+from test12.ostrack_tracker import OSTrackBoxTracker
+from test_temp.speed_prediction_model import VelocityPredictorGRU
 
 @dataclass(frozen=True)
 class RobotMotion:

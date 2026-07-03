@@ -1,140 +1,60 @@
-# test_12_temp: direction + velocity integration
+本文件夹把 `test12` 的 OSTrack 目标框跟踪/方向估计思路和 `test_temp` 的 GRU 速度估计接在一起：先用第一帧目标框和 OSTrack 跟踪 RGB 序列，得到每帧 bbox、yaw、pitch；再根据 3D 位置序列、机器人运动信息和速度 GRU 估计目标速度；最后输出方向 + 速度的合并 CSV，并在数据集模式下汇总误差指标。
 
-This folder combines:
+## 文件说明
 
-- `test12`: RGB frames + first-frame box -> OSTrack boxes -> yaw/pitch direction.
-- `test_temp`: GRU velocity model -> target velocity from a short 3D position sequence.
+- `estimate_direction_velocity.py`：主入口。支持单序列和数据集两种模式，负责调度跟踪、方向估计、位置构建、速度估计、CSV 输出和数据集汇总。
+- `camera_geometry.py`：本地相机内参和几何工具，包含 `CameraIntrinsics`、内参 JSON 读取、像素转 yaw/pitch、反投影和 bbox 中心计算。
+- `direction_pipeline.py`：本地方向估计流水线，包含 RGB 帧读取、bbox 跟踪结果转方向、角速度计算和 overlay 输出。它复用 `test12.ostrack_tracker.TrackedBox` 类型。
 
-Important: the velocity GRU is not an image-only model. It was trained on 13-D
-sequence features:
+## 外部复用
 
-```text
-refined_pos_abs(3), refined_pos_diff(3),
-robot_lin_vel(3), robot_ang_vel(3), dog_moving_flag(1)
+
+- OSTrack 适配器：`isaaclab/test12/ostrack_tracker.py`。
+- 速度模型定义：`isaaclab/test_temp/speed_prediction_model.py`。
+
+
+
+## 数据集模式
+
+数据集根目录需要包含 `manifest.csv` 和 `sequences/seq_xxxxxx_env_xxx/` 子目录。每个序列通常包含：
+
+- `rgb/`：按文件名排序的 RGB 帧。
+- `intrinsics.json`：相机内参，支持 `fx/fy/cx/cy` 字段，或 `intrinsic_matrix` / `camera_matrix` / `K` 形式的 3x3 矩阵。
+- `initial_boxes.csv`：多目标初始框，字段包含 `object_id,x1,y1,x2,y2`，可选 `target_color_name,target_color_rgb`。
+- `initial_box.txt`：单目标初始框，格式为 `x1 y1 x2 y2`。当没有 `initial_boxes.csv` 时使用。
+- `sensor_features.csv` 或 `velocity_features.csv`：速度输入特征，通常包含 `sensor_pos_base_x/y/z`、机器人线速度/角速度、`dog_moving_flag` 和有效性字段。
+- `ground_truth_direction.csv`、`velocity_features.csv`：可选，用于汇总方向/速度误差。
+
+示例：
+
 ```
-
-For datasets collected by `test10/collect_direction_eval_data.py`, the script
-now first looks for each sequence's `sensor_features.csv` as the velocity-model
-input. If it is absent, it falls back to `velocity_features.csv` from simulation.
-Velocity metrics still use `velocity_features.csv` as ground truth when present.
-
-## Dataset Evaluation
-
-Pass the collected dataset root directly. The dataset should contain
-`manifest.csv` and `sequences/seq_xxxxxx_env_xxx/` folders.
-
-```powershell
 python isaaclab/test_12_temp/estimate_direction_velocity.py `
-  --dataset_dir source/standalone/test10/direction_eval_dataset_red_combination `
-  --out_dir isaaclab/test_12_temp/outputs/red_combination_eval `
+  --dataset_dir path/to/direction_velocity_dataset `
+  --out_dir isaaclab/test_12_temp/outputs/dataset_eval `
   --ostrack_repo E:/path/to/OSTrack `
   --ostrack_checkpoint isaaclab/test12/OSTrack_ep0300.pth.tar `
   --velocity_model_path E:/path/to/best_model.pt `
   --sequence_length 9
 ```
 
-Useful options:
+## 单序列模式
 
-```powershell
---max_sequences 5
---target_color_name red
---target_object_id 0
---overlay
---force
 ```
-
-Outputs:
-
-- `out_dir/estimates/*.csv`: one combined direction+velocity CSV per target run.
-- `out_dir/summary.csv`: per-sequence counts plus direction and velocity metrics. The `input_features_source` column shows whether velocity input came from `sensor_features.csv` or the simulation fallback.
-- `out_dir/overlays/...`: optional tracked-box visualizations when `--overlay` is set.
-
-`summary.csv` computes direction errors against `ground_truth_direction.csv` and
-velocity errors against `velocity_features.csv` column
-`target_velocity_base_x/y/z` when those files are present.
-
-## Single Sequence Mode
-
-You can still run one sequence manually:
-
-```powershell
 python isaaclab/test_12_temp/estimate_direction_velocity.py `
-  --rgb_dir test10_direction_eval_dataset/sequences/seq_000000_env_000/rgb `
-  --initial_box_file test10_direction_eval_dataset/sequences/seq_000000_env_000/initial_box.txt `
-  --intrinsics_json test10_direction_eval_dataset/sequences/seq_000000_env_000/intrinsics.json `
+  --rgb_dir path/to/sequence/rgb `
+  --initial_box_file path/to/sequence/initial_box.txt `
+  --intrinsics_json path/to/sequence/intrinsics.json `
   --fps 50 `
   --ostrack_repo E:/path/to/OSTrack `
   --ostrack_checkpoint isaaclab/test12/OSTrack_ep0300.pth.tar `
   --velocity_model_path E:/path/to/best_model.pt `
-  --position_csv test10_direction_eval_dataset/sequences/seq_000000_env_000/velocity_features.csv `
-  --robot_motion_csv test10_direction_eval_dataset/sequences/seq_000000_env_000/velocity_features.csv `
-  --out_csv isaaclab/test_12_temp/outputs/seq_000000_direction_velocity.csv
+  --position_csv path/to/sequence/velocity_features.csv `
+  --robot_motion_csv path/to/sequence/velocity_features.csv `
+  --out_csv isaaclab/test_12_temp/outputs/seq_direction_velocity.csv
 ```
 
-## 3D Input Options
+## 输出文件
 
-Use one of these for velocity:
-
-- `--position_csv`: CSV with `frame_index` and one recognized 3D column set:
-  `x_input_m,y_input_m,z_input_m`, `sensor_pos_base_x,sensor_pos_base_y,sensor_pos_base_z`,
-  `refined_pos_base_x,refined_pos_base_y,refined_pos_base_z`, or `x,y,z`.
-- `--distance_csv`: CSV with `frame_index` and one of
-  `distance_m`, `range_m`, `depth_m`, `z_cam_m`, `target_distance_m`.
-- `--constant_distance_m`: quick sanity-check mode, useful only when the target
-  distance is nearly constant.
-- `--target_diameter_m`: rough monocular depth from tracked bbox size and known
-  target diameter.
-
-If your distance column is optical-frame z depth, add `--distance_kind optical_z`.
-Otherwise distance values are treated as range along the predicted yaw/pitch ray.
-## Sensor Feature Input
-
-For sensor-based velocity evaluation, put this file in each sequence folder:
-
-```text
-sequences/seq_xxxxxx_env_xxx/sensor_features.csv
-```
-
-Recommended columns, already in the velocity GRU's expected yaw-only base frame:
-
-```text
-frame_index,object_id,target_color_name
-sensor_pos_base_x,sensor_pos_base_y,sensor_pos_base_z
-robot_lin_vel_x,robot_lin_vel_y,robot_lin_vel_z
-robot_ang_vel_x,robot_ang_vel_y,robot_ang_vel_z
-dog_moving_flag,measurement_valid
-```
-
-If you only have a sensor range instead of `sensor_pos_base_*`, provide range and
-pose columns so the script can reconstruct the base-frame position in the same
-style as `test7_1/rl_perception_bridge.py`:
-
-```text
-lidar_distance,refined_yaw,refined_pitch
-camera_pos_w_x,camera_pos_w_y,camera_pos_w_z
-camera_quat_w,camera_quat_x,camera_quat_y,camera_quat_z
-root_pos_w_x,root_pos_w_y,root_pos_w_z
-root_quat_w,root_quat_x,root_quat_y,root_quat_z
-```
-
-Use `--sensor_features_name other_name.csv` if the per-sequence file has a
-different name. In single-sequence mode, pass the same file through
-`--position_csv`, `--distance_csv`, `--direction_csv`, `--frame_pose_csv`, and
-`--robot_motion_csv` as needed.
-
-## Robot Motion Input
-
-`--robot_motion_csv` is optional. If omitted, robot linear/angular velocity and
-`dog_moving_flag` default to zero.
-
-Recognized columns:
-
-```text
-frame_index
-robot_lin_vel_x, robot_lin_vel_y, robot_lin_vel_z
-robot_ang_vel_x, robot_ang_vel_y, robot_ang_vel_z
-dog_moving_flag
-```
-
-The first `sequence_length - 1` frames cannot have GRU velocity because the GRU
-needs a complete history window. Default `sequence_length` is `9`.
+- `out_dir/estimates/*.csv`：每个目标 run 的方向 + 速度估计结果。
+- `out_dir/summary.csv`：数据集汇总指标，包含方向误差、速度误差、有效帧数和输入特征来源。
+- `out_dir/overlays/...`：使用 `--overlay` 时生成的可视化图片。
