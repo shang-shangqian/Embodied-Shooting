@@ -6,7 +6,7 @@
 - `rl_perception_bridge.py`：感知到 RL 观测的桥接模块。负责加载视觉方向模型和速度 GRU 模型，把相机角度、raycast 距离、目标速度序列等转换到机器人 yaw-only base 坐标系，并写入环境中的 RL 预测量。
 - `target_follow_motion.py`：目标跟随运动控制补丁。给环境安装移动底盘跟随目标的命令生成逻辑；在混合场景中会根据当前 case 决定是否让底盘运动。
 - `asym_central_value_gru_network.py`：rl-games 自定义网络之一。使用非对称 actor/critic 结构，actor 使用策略观测，critic 使用特权观测，并用 GRU 处理时序信息。
-- `asym_dual_branch_gru_network.py`：另一种自定义 GRU 网络结构。包含双分支特征处理逻辑，用于实验不同的 actor/critic 表达方式。
+
 
 ## 资产文件说明
 
