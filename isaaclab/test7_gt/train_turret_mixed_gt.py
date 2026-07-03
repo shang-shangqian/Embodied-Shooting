@@ -1,7 +1,6 @@
 import argparse
 import math
 import os
-import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -82,10 +81,8 @@ def _resolve_experiment_name(requested_name: str | None, distributed: bool, glob
                 return _sanitize_name(run_name)
         time.sleep(0.1)
 
-    raise RuntimeError(
-        "Timed out waiting for rank 0 to publish the shared experiment name. "
-        "Re-run with --experiment_name turret_aim_mixed_<your_name> if this keeps happening."
-    )
+    # Last-resort fallback keeps ranks aligned if TORCHELASTIC_RUN_ID is stable.
+    return f"turret_aim_mixed_dist_{key}"
 
 
 def _pick_checkpoint_from_dir(run_dir: Path, which: str) -> Path:
@@ -397,10 +394,10 @@ def main():
     parser.add_argument("--target_vz_max", type=float, default=0.5)
 
     # 4-case mix probabilities: [SS, SD, DS, DD]
-    parser.add_argument("--p_ss", type=float, default=0.35, help="P(robot static, target static)")
-    parser.add_argument("--p_sd", type=float, default=0.35, help="P(robot static, target dynamic)")
-    parser.add_argument("--p_ds", type=float, default=0.2, help="P(robot dynamic, target static)")
-    parser.add_argument("--p_dd", type=float, default=0.1, help="P(robot dynamic, target dynamic)")
+    parser.add_argument("--p_ss", type=float, default=0.2, help="P(robot static, target static)")
+    parser.add_argument("--p_sd", type=float, default=0.2, help="P(robot static, target dynamic)")
+    parser.add_argument("--p_ds", type=float, default=0.3, help="P(robot dynamic, target static)")
+    parser.add_argument("--p_dd", type=float, default=0.3, help="P(robot dynamic, target dynamic)")
     parser.add_argument("--dog_vx_min", type=float, default=-1.5)
     parser.add_argument("--dog_vx_max", type=float, default=1.5)
     parser.add_argument("--dog_vy_min", type=float, default=-0.8)
@@ -466,7 +463,6 @@ def main():
         device=launcher_device,
         enable_cameras=False,   # GT-only: 不启动相机
     )
-
     sim_app = app_launcher.app
 
     try:
@@ -626,103 +622,8 @@ def main():
             self._best_epoch_log_file = Path("runs") / self._experiment_name / "best_checkpoint_epoch.txt"
             self._best_reward_seen = float("-inf")
 
-        def after_init(self, algo):
-            parent_after_init = getattr(super(), "after_init", None)
-            if parent_after_init is not None:
-                parent_after_init(algo)
-            self.algo = algo
-            self._patch_checkpoint_saver()
-
         def _best_ckpt_path(self) -> Path:
             return Path("runs") / self._experiment_name / "nn" / f"{self._ckpt_base_name}.pth"
-
-        def _strip_distributed_rank_from_stem(self, stem: str) -> str:
-            base_name = re.escape(self._ckpt_base_name)
-            explicit_rank_suffix = re.compile(
-                rf"(?P<prefix>^|_)({base_name})(?:[_-](?:rank|global_rank|local_rank|gpu|cuda)[_-]?\d+)(?P<suffix>_|$)"
-            )
-
-            stem = explicit_rank_suffix.sub(
-                lambda match: f"{match.group('prefix')}{self._ckpt_base_name}{match.group('suffix')}",
-                stem,
-            )
-
-            if re.fullmatch(rf"{base_name}[_-]\d+", stem):
-                return self._ckpt_base_name
-
-            bare_rank_before_rl_games_suffix = re.compile(
-                rf"(?P<prefix>^|_)({base_name})[_-]\d+(?P<suffix>_(?:ep|frame|rew)_)"
-            )
-            return bare_rank_before_rl_games_suffix.sub(
-                lambda match: f"{match.group('prefix')}{self._ckpt_base_name}{match.group('suffix')}",
-                stem,
-            )
-
-        def _checkpoint_path_with_suffix(self, path: Path) -> Path:
-            if path.suffix == ".pth":
-                return path
-            return path.with_suffix(".pth")
-
-        def _single_gpu_named_checkpoint_path(self, path: Path) -> Path:
-            path = self._checkpoint_path_with_suffix(path)
-            normalized_stem = self._strip_distributed_rank_from_stem(path.stem)
-            return path.with_name(f"{normalized_stem}{path.suffix}")
-
-        def _find_saved_checkpoint(self, requested_path: Path, canonical_path: Path, saved_after: float) -> Path | None:
-            requested_path = self._checkpoint_path_with_suffix(requested_path)
-            if requested_path.exists() and requested_path.stat().st_mtime >= saved_after - 1.0:
-                return requested_path
-            if canonical_path.exists() and canonical_path.stat().st_mtime >= saved_after - 1.0:
-                return canonical_path
-
-            checkpoint_dir = requested_path.parent
-            if not checkpoint_dir.is_dir():
-                return None
-
-            requested_prefix = requested_path.stem
-            canonical_prefix = canonical_path.stem
-            candidates = [
-                path
-                for path in checkpoint_dir.glob("*.pth")
-                if path.stat().st_mtime >= saved_after - 1.0
-                and (
-                    path.stem == requested_prefix
-                    or path.stem == canonical_prefix
-                    or path.stem.startswith(f"{requested_prefix}_")
-                    or path.stem.startswith(f"{canonical_prefix}_")
-                    or self._strip_distributed_rank_from_stem(path.stem) == canonical_prefix
-                )
-            ]
-            if len(candidates) == 0:
-                return None
-            return max(candidates, key=lambda path: path.stat().st_mtime)
-
-        def _normalize_checkpoint_name(self, requested_path: Path, saved_after: float) -> None:
-            canonical_path = self._single_gpu_named_checkpoint_path(requested_path)
-            saved_path = self._find_saved_checkpoint(requested_path, canonical_path, saved_after)
-            if saved_path is None or saved_path == canonical_path:
-                return
-
-            canonical_path.parent.mkdir(parents=True, exist_ok=True)
-            saved_path.replace(canonical_path)
-            print(f"[train-mixed] normalized checkpoint name: {saved_path.name} -> {canonical_path.name}")
-
-        def _patch_checkpoint_saver(self) -> None:
-            if not self._is_primary:
-                return
-            if self.algo is None or getattr(self.algo, "_single_gpu_checkpoint_naming", False):
-                return
-
-            original_save = self.algo.save
-
-            def save_with_single_gpu_names(path, *args, **kwargs):
-                save_started_at = time.time()
-                result = original_save(path, *args, **kwargs)
-                self._normalize_checkpoint_name(Path(path), save_started_at)
-                return result
-
-            self.algo.save = save_with_single_gpu_names
-            self.algo._single_gpu_checkpoint_naming = True
 
         def _try_record_best_checkpoint_epoch(self, epoch_num: int) -> None:
             if not self._is_primary:

@@ -155,6 +155,25 @@ class AsymDualBranchGRUNet(nn.Module):
 
             batch_size = actor_h.shape[1]
             seq_len = obs.shape[0] // batch_size
+            if obs.shape[0] % batch_size != 0:
+                raise RuntimeError(
+                    f"[RNN shape error] obs.shape[0]={obs.shape[0]} is not divisible by batch_size={batch_size}"
+                )
+
+            if obs.shape[1] != 59:
+                raise RuntimeError(
+                    f"[Obs dim error] expected obs dim 59, got {obs.shape[1]}"
+                )
+
+            if actor_full_obs.shape[1] != 28:
+                raise RuntimeError(
+                    f"[Actor obs dim error] expected 28, got {actor_full_obs.shape[1]}"
+                )
+
+            if critic_full_obs.shape[1] != 31:
+                raise RuntimeError(
+                    f"[Critic obs dim error] expected 31, got {critic_full_obs.shape[1]}"
+                )
         else:
             # 单步推理 fallback
             batch_size = obs.shape[0]

@@ -51,8 +51,8 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     # pred_pos_base(3)
     # pred_vel_base(3)
     # pred_distance(1)
-    # pred_yaw_base(1)
-    # pred_pitch_base(1)
+    # policy_yaw_error_los(1)      # 目标直视 yaw 与真实枪口 yaw 的误差，不含重力补偿
+    # policy_pitch_error_los(1)    # 目标直视 pitch 与真实枪口 pitch 的误差，不含重力补偿
     # turret_yaw_pitch(2)
     # turret_yaw_pitch_vel(2)
     # root_lin_vel_b(3)
@@ -68,8 +68,8 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     # gt_pos_base(3)
     # gt_vel_base(3)
     # gt_distance(1)
-    # gt_yaw_base(1)
-    # gt_pitch_base(1)
+    # gt_yaw_error_gravity(1)      # gravity-only 解析 yaw 误差
+    # gt_pitch_error_gravity(1)    # gravity-only 解析 pitch 误差
     # turret_yaw_pitch(2)
     # turret_yaw_pitch_vel(2)
     # root_lin_vel_b(3)
@@ -88,7 +88,7 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     sim: SimulationCfg = SimulationCfg(dt=0.005, render_interval=decimation)
 
     # scene
-    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=64, env_spacing=200.0, replicate_physics=True)
+    scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=64, env_spacing=500.0, replicate_physics=True)
     
     debug_vis: bool = False     #是否可视化
     debug_diagnostics: bool = False     #是否打印调试诊断信息
@@ -119,8 +119,8 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     # 每帧把 runtime 重建出来的世界位姿写进去，避免 TiledCamera 读到“死相机”
     runtime_camera_proxy_prim_path_expr: str = "/World/RuntimeRenderCameras/env_.*/Camera"
 
-    camera_width: int = 512
-    camera_height: int = 288
+    camera_width: int = 1024
+    camera_height: int = 576
     vision_history_length: int = 4
     vision_update_period: float = 0.0
     vision_normalize_rgb: bool = True
@@ -212,14 +212,21 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     muzzle_offset_b: tuple[float, float, float] = (0.09, 0.0, 0.0)  # gun_tip 相对 pitch_link 的局部偏移
 
     # --- control ---
-    max_delta_yaw: float = 0.06      # 每个 env step 最大 yaw 增量，单位 rad
-    max_delta_pitch: float = 0.04    # 每个 env step 最大 pitch 增量，单位 rad
+    max_delta_yaw: float = 0.03      # 每个 env step 最大 yaw 增量，单位 rad
+    max_delta_pitch: float = 0.02    # 每个 env step 最大 pitch 增量，单位 rad
     action_smoothing: float = 0.0  # 动作平滑系数，0.0 表示不平滑，1.0 表示完全平滑（即保持初始动作不变）。建议在训练初期使用一些平滑（如 0.5），等策略稳定后再逐渐降低到 0.0。
     # turret joint limits
     yaw_min: float = -3.14159
     yaw_max: float = 3.14159
     pitch_min: float = -1.047   #-60度
     pitch_max: float = 1.047    #60度
+
+    # --- observation normalization ---
+    # 瞄准误差单独用高增益尺度，不要和关节角共用 pi / pitch_limit。
+    # 0.05 rad ≈ 2.86 deg，表示 0.05rad 误差归一化为 1.0。
+    # 远距离命中时 0.01~0.05rad 都是关键误差范围。
+    aim_error_obs_scale: float = 0.05
+    aim_error_obs_clip: float = 5.0
 
     # --- locomotion policy (for moving-base aiming) ---
     enable_locomotion_policy: bool = False      #是否启用预训练的移动策略来控制腿部关节（否则保持默认站立姿态）
@@ -231,15 +238,15 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     base_init_pos: tuple[float, float, float] = (0.0, 0.0, 0.35)
 
     # --- target sampling (vision-friendly, in camera sector) ---
-    # 距离限制在 8~20 m
-    target_radius_range: tuple[float, float] = (8.0, 20.0)
+    # 距离限制在 80~150 m
+    target_radius_range: tuple[float, float] = (80.0, 150.0)
     # --- rendered target sphere ---
     render_target_sphere: bool = True
-    target_sphere_radius: float = 0.2
+    target_sphere_radius: float = 0.35
     target_sphere_color: tuple[float, float, float] = (1.0, 0.1, 0.1)
 
     # 视觉模块的有效距离范围（相对相机）
-    vision_valid_distance_range: tuple[float, float] = (8.0, 20.0)
+    vision_valid_distance_range: tuple[float, float] = (80.0, 150.0)
     vision_distance_bounce_margin: float = 0.2
 
     # 每个 env 下真实球体的 prim 路径
@@ -250,7 +257,7 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     target_yaw_range: tuple[float, float] = (-math.pi / 2, math.pi / 2)
 
     # 是否按相机扇区采样目标
-    sample_target_in_camera_sector: bool = True
+    sample_target_in_camera_sector: bool = False
 
     # 相机扇区采样：水平/垂直角范围（单位 rad）
     # 建议先取相对保守范围，保证目标更容易在画面中央附近
@@ -261,8 +268,8 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     # 最终高度会由相机位置 + 距离 * sin(pitch) 决定，这里通常不再单独采 z
     # dynamic target (optional)
     enable_dynamic_target: bool = False
-    target_speed_range: tuple[float, float] = (0.6, 1.0)
-    target_vertical_speed_range: tuple[float, float] = (-0.3, 0.3)
+    target_speed_range: tuple[float, float] = (0.6, 5.0)
+    target_vertical_speed_range: tuple[float, float] = (-0.5, 0.5)
     # --- 新增：目标加速度配置 ---
     target_acc_range: tuple[float, float] = (-0.6, 0.6)
     target_vertical_acc_range: tuple[float, float] = (-0.2, 0.2)
@@ -273,26 +280,43 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     failure_tilt_cos_threshold: float = 0.4     #炮台根部竖直向上的向量与世界竖直向上的向量的夹角余弦值低于该阈值即判定为失败（对应约 66° 以上的倾倒）
 
     # --- ballistic (gravity + optional air drag) ---
-    muzzle_speed: float = 25.0      #枪口初速，单位 m/s
+    muzzle_speed: float = 882.0      #枪口初速，单位 m/s
     gravity_mps2: float = 9.81
-    hit_radius: float = 0.2    #命中判定半径
-    ballistic_max_time: float = 1.5     
-    ballistic_num_samples: int = 181
+    hit_radius: float = 0.35    #命中判定半径
+    ballistic_max_time: float = 0.4     
+    ballistic_num_samples: int = 401
 
-    # 空气阻力（球体二次阻力）
+    # 空气阻力：Mach-Cd 查表二次阻力
     enable_air_drag: bool = False
-    air_density: float = 1.204          # kg/m^3
-    drag_coefficient: float = 0.47      # 光滑球体近似 Cd
-    projectile_diameter_m: float = 0.017
-    projectile_mass_kg: float = 0.0032
+
+    air_density: float = 1.204              # kg/m^3
+    speed_of_sound_mps: float = 343.0       # m/s，常温近似声速
+
+    projectile_diameter_m: float = 0.0057   # 5.56mm 弹头直径，单位 m
+    projectile_mass_kg: float = 0.004       # 约 4.0g，单位 kg
+
+    # fallback：当 use_mach_dependent_cd=False 时使用固定 Cd
+    drag_coefficient: float = 0.25
+
+    # 是否使用 Mach-Cd 查表
+    use_mach_dependent_cd: bool = True
+
+    # Mach-Cd 表：根据当前弹丸速度对应的 Mach 数插值得到 Cd
+    mach_cd_mach: tuple[float, ...] = (
+        0.00, 0.50, 0.80, 0.95, 1.05, 1.20, 1.50, 2.00, 2.50, 3.00
+    )
+
+    mach_cd_cd: tuple[float, ...] = (
+        0.16, 0.16, 0.18, 0.28, 0.36, 0.34, 0.30, 0.26, 0.24, 0.23
+    )
 
     # --- reward weights ---
     w_rate: float = -1    #位置增量惩罚权重
     w_action_change: float = -0.01   #动作变化惩罚权重（鼓励平滑）
-    r_hit: float = 50.0
+    r_hit: float = 100.0
     r_bad_fire: float = -1
-    r_fire_cost: float = -0.5
-    r_time_penalty: float = -0.4
+    r_fire_cost: float = -0.8
+    r_time_penalty: float = -0.7
 
     # 开火后冷却步数：控制最小射击间隔
     fire_cooldown_steps: int = 5
@@ -300,20 +324,21 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     # direct fire intent 参数：
     # action[2] -> fire_intent = (action[2] + 1) / 2
     # 连续 fire_intent > threshold 达到 hold_steps 后，才允许开火
-    fire_intent_threshold: float = 0.6
+    fire_intent_threshold: float = 0.65
     fire_intent_hold_steps: int = 2
+    r_no_fire_timeout_penalty: float = -5.0
 
     # 第一枪命中奖励：鼓励一次瞄准、一次命中
-    r_first_shot_hit_bonus: float = 30
+    r_first_shot_hit_bonus: float = 50
 
     # 重复开火递增惩罚：第2枪开始，每次 fire 额外扣分越来越多
-    r_repeat_fire_penalty: float = 0
+    r_repeat_fire_penalty: float = -4
 
-    w_yaw_align = 0.2
-    w_pitch_align = 0.2
+    w_yaw_align = 0.1
+    w_pitch_align = 0.1
 
-    aim_warmup_s: float = 3.0       #机器狗随机移动时间
-    w_ballistic: float = 0.18       #弹道奖励权重（基于弹道预测的命中距离和命中判定）
+    aim_warmup_s: float = 2.0       #机器狗随机移动时间
+    w_ballistic: float = 0.8       #弹道奖励权重（基于弹道预测的命中距离和命中判定）
 
 
     # 第3维动作作为连续 fire intent
@@ -323,7 +348,7 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     fire_charge_leak: float = 2      # charge 泄放速度（每秒）
 
     # 命中判定距离
-    max_hit_distance: float = 25.0
+    max_hit_distance: float = 170.0
 
     # --- actuator settings (覆盖/补充 USD joint drive) ---
     yaw_effort_limit: float = 50.0
@@ -602,15 +627,75 @@ class TurretAimEnv(DirectRLEnv):
         # 时间离散步长（长度为 num_samples-1），用于离散积分弹道
         self._ballistic_dt_samples = self._ballistic_time_samples[1:] - self._ballistic_time_samples[:-1]
 
-        # 二次空气阻力加速度系数: a_drag = -k * |v| * v
-        # k = 0.5 * rho * Cd * A / m, A = pi * (d/2)^2
-        projectile_radius = 0.5 * self.cfg.projectile_diameter_m
+        # 二次空气阻力参数：
+        #     a_drag = -0.5 * rho * Cd(Mach) * A / m * |v| * v
+        #     A = pi * (d / 2)^2
+        #
+        # 注意：
+        # - 这里不考虑风速，所以 v 直接使用弹丸世界系速度 bullet_vel。
+        # - _drag_accel_coeff 仍保留为固定 Cd fallback，避免其它旧代码引用时报错。
+        projectile_radius = 0.5 * float(self.cfg.projectile_diameter_m)
         cross_section_area = math.pi * projectile_radius * projectile_radius
-        drag_accel_coeff = 0.5 * self.cfg.air_density * self.cfg.drag_coefficient * cross_section_area / max(
-            self.cfg.projectile_mass_kg,
-            1e-6,
+        projectile_mass = max(float(self.cfg.projectile_mass_kg), 1e-6)
+
+        self._projectile_area = torch.tensor(
+            cross_section_area,
+            device=self.device,
+            dtype=torch.float32,
         )
-        self._drag_accel_coeff = torch.tensor(drag_accel_coeff, device=self.device, dtype=torch.float32)
+
+        self._projectile_mass = torch.tensor(
+            projectile_mass,
+            device=self.device,
+            dtype=torch.float32,
+        )
+
+        self._air_density = torch.tensor(
+            float(self.cfg.air_density),
+            device=self.device,
+            dtype=torch.float32,
+        )
+
+        self._speed_of_sound_mps = torch.tensor(
+            max(float(self.cfg.speed_of_sound_mps), 1e-6),
+            device=self.device,
+            dtype=torch.float32,
+        )
+
+        self._mach_table = torch.tensor(
+            self.cfg.mach_cd_mach,
+            device=self.device,
+            dtype=torch.float32,
+        )
+
+        self._cd_table = torch.tensor(
+            self.cfg.mach_cd_cd,
+            device=self.device,
+            dtype=torch.float32,
+        )
+
+        if self._mach_table.numel() != self._cd_table.numel() or self._mach_table.numel() < 2:
+            raise RuntimeError(
+                "mach_cd_mach and mach_cd_cd must have the same length and contain at least 2 points."
+            )
+
+        if not torch.all(self._mach_table[1:] > self._mach_table[:-1]):
+            raise RuntimeError("mach_cd_mach must be strictly increasing.")
+
+        # 固定 Cd fallback，主要用于兼容旧代码
+        fallback_drag_accel_coeff = (
+            0.5
+            * float(self.cfg.air_density)
+            * float(self.cfg.drag_coefficient)
+            * cross_section_area
+            / projectile_mass
+        )
+
+        self._drag_accel_coeff = torch.tensor(
+            fallback_drag_accel_coeff,
+            device=self.device,
+            dtype=torch.float32,
+        )
 
 
 
@@ -1151,8 +1236,21 @@ class TurretAimEnv(DirectRLEnv):
         aiming_enabled = self._aim_warmup_left_steps <= 0
         can_fire = self._fire_cooldown <= 0
 
-        # 连续两步 intent 确认，过滤单步动作抖动
-        fire_high = fire_intent > float(self.cfg.fire_intent_threshold)
+        # 连续 intent 确认，过滤单步动作抖动
+        #
+        # 关键修改：
+        #   warmup 没结束时，不允许累计 _fire_intent_high_steps；
+        #   pred_ready 没准备好时，也不允许累计。
+        #
+        # 这样可以避免：
+        #   Actor 在 warmup 期间一直输出高 fire_intent，
+        #   导致 warmup 结束第一帧瞬间开火。
+        #
+        # 注意：
+        #   不把 can_fire 加进 fire_count_enabled。
+        #   否则 cooldown 期间会清空计数，导致每次 cooldown 后还要额外等 hold_steps。
+        fire_count_enabled = pred_ready & aiming_enabled
+        fire_high = (fire_intent > float(self.cfg.fire_intent_threshold)) & fire_count_enabled
 
         self._fire_intent_high_steps = torch.where(
             fire_high,
@@ -1228,7 +1326,7 @@ class TurretAimEnv(DirectRLEnv):
             self._target_vel_w += self._target_acc_w * self.step_dt
 
             speed_xy = torch.norm(self._target_vel_w[:, :2], dim=-1, keepdim=True)
-            max_speed = 3.0
+            max_speed = 5.0
             scale = torch.clamp(max_speed / speed_xy.clamp_min(1e-6), max=1.0)
             self._target_vel_w[:, :2] *= scale
 
@@ -1864,7 +1962,7 @@ class TurretAimEnv(DirectRLEnv):
         y = pos_base[:, 1]
         z = pos_base[:, 2]
 
-        yaw_base = torch.atan2(y, x.clamp(min=1e-6))
+        yaw_base = torch.atan2(y, x)
         pitch_base = torch.atan2(-z, torch.sqrt(x * x + y * y).clamp_min(1e-6))
         return yaw_base, pitch_base
 
@@ -2354,7 +2452,7 @@ class TurretAimEnv(DirectRLEnv):
 
         # yaw：无 deadband，高斯奖励持续逼近 0 误差
         yaw_err = wrap_to_pi(yaw - yaw_ref)
-        yaw_sigma = 0.04
+        yaw_sigma = 0.015
         yaw_reward = torch.exp(-((yaw_err / yaw_sigma) ** 2))
 
         # pitch：只追 gravity-only 弹道角
@@ -2362,7 +2460,7 @@ class TurretAimEnv(DirectRLEnv):
         pitch_target = pitch_g_ref
 
         pitch_err = pitch - pitch_target
-        pitch_sigma = 0.04
+        pitch_sigma = 0.015
         pitch_reward = torch.exp(-((pitch_err / pitch_sigma) ** 2))
 
         return yaw_reward, pitch_reward
@@ -2453,14 +2551,83 @@ class TurretAimEnv(DirectRLEnv):
         return min_dist, s, t
 
 
+    def _interp_cd_from_mach(self, mach: torch.Tensor) -> torch.Tensor:
+        """
+        根据 Mach 数线性插值得到 Cd。
+
+        输入:
+            mach: 任意 shape 的 tensor
+
+        输出:
+            cd: 与 mach 同 shape 的 tensor
+        """
+        mach_table = self._mach_table.to(device=mach.device, dtype=mach.dtype)
+        cd_table = self._cd_table.to(device=mach.device, dtype=mach.dtype)
+
+        orig_shape = mach.shape
+        x = mach.reshape(-1)
+
+        x = x.clamp(
+            min=float(mach_table[0].item()),
+            max=float(mach_table[-1].item()),
+        )
+
+        idx = torch.searchsorted(mach_table, x, right=True) - 1
+        idx = idx.clamp(0, mach_table.numel() - 2)
+
+        x0 = mach_table[idx]
+        x1 = mach_table[idx + 1]
+        y0 = cd_table[idx]
+        y1 = cd_table[idx + 1]
+
+        alpha = (x - x0) / (x1 - x0).clamp_min(1e-6)
+        cd = y0 + alpha * (y1 - y0)
+
+        return cd.reshape(orig_shape)
+
+
+    def _compute_air_drag_accel_w(self, bullet_vel_w: torch.Tensor) -> torch.Tensor:
+        """
+        世界坐标系下的空气阻力加速度。
+
+        不考虑风速时：
+            v_rel = bullet_vel_w
+
+        二次阻力：
+            a_drag = -0.5 * rho * Cd(Mach) * A / m * |v| * v
+
+        其中：
+            Mach = |v| / speed_of_sound
+        """
+        dtype = bullet_vel_w.dtype
+        device = bullet_vel_w.device
+
+        speed = torch.norm(bullet_vel_w, dim=-1, keepdim=True).clamp_min(1e-6)
+
+        if bool(self.cfg.use_mach_dependent_cd):
+            mach = speed / self._speed_of_sound_mps.to(device=device, dtype=dtype)
+            cd = self._interp_cd_from_mach(mach)
+        else:
+            cd = torch.full_like(speed, float(self.cfg.drag_coefficient))
+
+        rho = self._air_density.to(device=device, dtype=dtype)
+        area = self._projectile_area.to(device=device, dtype=dtype)
+        mass = self._projectile_mass.to(device=device, dtype=dtype)
+
+        coeff = 0.5 * rho * cd * area / mass
+
+        drag_acc = -coeff * speed * bullet_vel_w
+        return drag_acc
+
+
     def _compute_ballistic_metrics(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns (min_distance_to_target, hit_flag, closest_time_s).
 
-        使用离散积分模拟弹道，但命中判定不再使用“采样点到采样点”的最小距离，
-        而是使用“相邻两帧形成的线段”之间的最小距离：
-        - 弹丸轨迹：bullet_pos[k] -> bullet_pos[k+1]
-        - 目标轨迹：target_pos[k] -> target_pos[k+1]
-        这样即使真实最近点落在两个采样时刻之间，也不会漏判。
+        GT 对比实验用弹道：
+        - 弹丸只受重力，不考虑空气阻力；
+        - 初始速度 = 枪口点当前速度 + 枪口方向 * muzzle_speed；
+        - 命中距离按“同一时刻”的弹丸位置和目标位置比较；
+        - 不再使用异步 segment-segment 最近距离，避免物理上不同时间点被误判为命中。
         """
         muzzle_pos_w, _, muzzle_fwd_w = self._compute_turret_frame()
 
@@ -2474,72 +2641,116 @@ class TurretAimEnv(DirectRLEnv):
             muzzle_pos_w=muzzle_pos_w,
         )
 
-        # 初始弹速 = 枪口点速度 + 枪口前向初速
-        bullet_pos = muzzle_pos_w
-        bullet_vel = muzzle_vel_w + muzzle_fwd_w * self.cfg.muzzle_speed
+        # 初始弹速：继承枪口点速度 + 枪口方向初速
+        bullet_vel0 = muzzle_vel_w + muzzle_fwd_w * float(self.cfg.muzzle_speed)
 
-        target_pos = self._target_pos_w
-        target_vel = self._target_vel_w
+        target_pos0 = self._target_pos_w
+        target_vel0 = self._target_vel_w
+        target_acc0 = getattr(self, "_target_acc_w", torch.zeros_like(target_vel0))
 
-        bullet_pos_hist = [bullet_pos]
-        target_pos_hist = [target_pos]
+        dtype = muzzle_pos_w.dtype
+        device = muzzle_pos_w.device
 
-        for dt in self._ballistic_dt_samples:
-            dt = dt.view(1, 1)
+        # ------------------------------------------------------------
+        # 1) 无空气阻力：解析重力弹道
+        # ------------------------------------------------------------
+        if not bool(self.cfg.enable_air_drag):
+            times = self._ballistic_time_samples.to(device=device, dtype=dtype)  # (T,)
+            t = times.view(1, -1, 1)                                             # (1, T, 1)
 
-            if self.cfg.enable_air_drag:
-                speed = torch.norm(bullet_vel, dim=-1, keepdim=True).clamp_min(1e-6)
-                drag_acc = -self._drag_accel_coeff * speed * bullet_vel
-            else:
-                drag_acc = torch.zeros_like(bullet_vel)
+            gravity_w = self._gravity_w.to(device=device, dtype=dtype).view(1, 1, 3)
 
-            total_acc = self._gravity_w.unsqueeze(0) + drag_acc
+            bullet_pos_traj = (
+                muzzle_pos_w.unsqueeze(1)
+                + bullet_vel0.unsqueeze(1) * t
+                + 0.5 * gravity_w * t * t
+            )
 
-            # 半隐式欧拉：先更新速度，再更新位置
-            bullet_vel = bullet_vel + total_acc * dt
-            bullet_pos = bullet_pos + bullet_vel * dt
-            target_pos = target_pos + target_vel * dt
+            # GT 对比里建议 target_acc0 强制为 0；
+            # 这里保留 0.5*a*t^2，是为了即使之后打开目标加速度，弹道评估仍自洽。
+            target_pos_traj = (
+                target_pos0.unsqueeze(1)
+                + target_vel0.unsqueeze(1) * t
+                + 0.5 * target_acc0.unsqueeze(1) * t * t
+            )
 
-            bullet_pos_hist.append(bullet_pos)
-            target_pos_hist.append(target_pos)
+        # ------------------------------------------------------------
+        # 2) 如果以后手动打开空气阻力，则退回数值积分
+        #    当前 GT 实验不建议走这个分支。
+        # ------------------------------------------------------------
+        else:
+            bullet_pos = muzzle_pos_w
+            bullet_vel = bullet_vel0
 
-        # shape: (N, T, 3)
-        bullet_pos_traj = torch.stack(bullet_pos_hist, dim=1)
-        target_pos_traj = torch.stack(target_pos_hist, dim=1)
+            target_pos = target_pos0
+            target_vel = target_vel0
+            target_acc = target_acc0
 
-        # 每一段的起点和终点
-        # shape: (N, T-1, 3)
+            bullet_pos_hist = [bullet_pos]
+            target_pos_hist = [target_pos]
+
+            gravity_acc = self._gravity_w.to(device=device, dtype=dtype).unsqueeze(0)
+
+            for dt in self._ballistic_dt_samples:
+                dt = dt.to(device=device, dtype=dtype).view(1, 1)
+
+                # ------------------------------------------------------------
+                # 弹丸运动：重力 + Mach-Cd 二次空气阻力
+                # 使用 midpoint / RK2 积分，比原来的半隐式欧拉更稳定。
+                # ------------------------------------------------------------
+                acc0 = gravity_acc + self._compute_air_drag_accel_w(bullet_vel)
+
+                vel_mid = bullet_vel + 0.5 * acc0 * dt
+
+                acc_mid = gravity_acc + self._compute_air_drag_accel_w(vel_mid)
+
+                bullet_pos = bullet_pos + vel_mid * dt
+                bullet_vel = bullet_vel + acc_mid * dt
+
+                # ------------------------------------------------------------
+                # 目标运动：保持原来的恒定加速度模型
+                # ------------------------------------------------------------
+                target_pos = target_pos + target_vel * dt + 0.5 * target_acc * dt * dt
+                target_vel = target_vel + target_acc * dt
+
+                bullet_pos_hist.append(bullet_pos)
+                target_pos_hist.append(target_pos)
+
+            bullet_pos_traj = torch.stack(bullet_pos_hist, dim=1)
+            target_pos_traj = torch.stack(target_pos_hist, dim=1)
+            times = self._ballistic_time_samples.to(device=device, dtype=dtype)
+
+        # ------------------------------------------------------------
+        # 3) 同一时间段内的同步最近距离
+        #    bullet(alpha) 和 target(alpha) 使用同一个 alpha，
+        #    避免不同时间点之间的 segment-segment 假最近距离。
+        # ------------------------------------------------------------
         bullet_seg_start = bullet_pos_traj[:, :-1, :]
-        bullet_seg_end   = bullet_pos_traj[:, 1:, :]
+        bullet_seg_end = bullet_pos_traj[:, 1:, :]
+
         target_seg_start = target_pos_traj[:, :-1, :]
-        target_seg_end   = target_pos_traj[:, 1:, :]
+        target_seg_end = target_pos_traj[:, 1:, :]
 
-        num_envs = bullet_pos_traj.shape[0]
-        num_segs = bullet_seg_start.shape[1]
+        rel0 = bullet_seg_start - target_seg_start
+        rel1 = bullet_seg_end - target_seg_end
+        rel_delta = rel1 - rel0
 
-        # 拉平成 (N*(T-1), 3)，做批量线段-线段最短距离
-        p0 = bullet_seg_start.reshape(-1, 3)
-        p1 = bullet_seg_end.reshape(-1, 3)
-        q0 = target_seg_start.reshape(-1, 3)
-        q1 = target_seg_end.reshape(-1, 3)
+        denom = (rel_delta * rel_delta).sum(dim=-1).clamp_min(1e-8)
+        alpha = -((rel0 * rel_delta).sum(dim=-1)) / denom
+        alpha = alpha.clamp(0.0, 1.0)
 
-        seg_min_dist_flat, seg_s_flat, _ = self._segment_segment_min_distance(p0, p1, q0, q1)
+        closest_rel = rel0 + alpha.unsqueeze(-1) * rel_delta
+        seg_min_dist = torch.norm(closest_rel, dim=-1)
 
-        # reshape 回 (N, T-1)
-        seg_min_dist = seg_min_dist_flat.view(num_envs, num_segs)
-        seg_s = seg_s_flat.view(num_envs, num_segs)
-
-        # 找到每个 env 的最小距离所在的那一段
         min_dist, min_seg_idx = torch.min(seg_min_dist, dim=-1)
 
-        # 最近时刻：段起始时刻 + 段内参数 * dt
-        t0 = self._ballistic_time_samples[:-1]                  # (T-1,)
-        dt_seg = self._ballistic_dt_samples                     # (T-1,)
+        t0 = times[:-1]
+        dt_seg = times[1:] - times[:-1]
 
-        row_idx = torch.arange(num_envs, device=self.device)
-        closest_time = t0[min_seg_idx] + seg_s[row_idx, min_seg_idx] * dt_seg[min_seg_idx]
+        row_idx = torch.arange(self.num_envs, device=device)
+        closest_time = t0[min_seg_idx] + alpha[row_idx, min_seg_idx] * dt_seg[min_seg_idx]
 
-        hit = min_dist < self.cfg.hit_radius
+        hit = min_dist < float(self.cfg.hit_radius)
 
         return min_dist, hit, closest_time
     
@@ -2657,15 +2868,18 @@ class TurretAimEnv(DirectRLEnv):
             policy_pitch_base_raw = self._rl_pred_pitch_base * pred_ready.to(dtype=torch.float32)
 
         # -------------------------------------------------
-        # observation 里的瞄准误差也使用 reward 同源的 muzzle-based reference
+        # Actor/Critic aim reference
+        #
+        # Match turret_aim_env_gt_g.py behavior:
+        # - Actor fallback uses gravity-compensated pitch reference.
+        # - If RL perception prediction is ready, Actor still uses predicted yaw/pitch.
+        # - Critic always uses privileged gravity-compensated reference.
         # -------------------------------------------------
         muzzle_yaw_base, muzzle_pitch_base = self._compute_muzzle_actual_yaw_pitch_in_yaw_only_base()
 
         yaw_ref_obs, pitch_los_ref_obs, pitch_g_ref_obs = self._compute_muzzle_based_aim_refs()
 
-        # 训练时给 actor 一个单点 pitch 目标。
-        # 这里优先用 gravity-only 低抛解，因为它更接近真正弹道命中需要的 pitch。
-        # 如果你想更保守，也可以换成 0.5 * (pitch_los_ref_obs + pitch_g_ref_obs)。
+        # Use gravity-compensated pitch as the GT/fallback reference.
         pitch_ref_obs = pitch_g_ref_obs
 
         if use_gt_fallback:
@@ -2687,31 +2901,25 @@ class TurretAimEnv(DirectRLEnv):
         policy_yaw_error = wrap_to_pi(policy_yaw_ref_raw - muzzle_yaw_base).unsqueeze(-1)
         policy_pitch_error = (policy_pitch_ref_raw - muzzle_pitch_base).unsqueeze(-1)
 
+        # Critic privileged obs always uses gravity-compensated ballistic reference.
         gt_yaw_error = wrap_to_pi(yaw_ref_obs - muzzle_yaw_base).unsqueeze(-1)
-        gt_pitch_error = (pitch_ref_obs - muzzle_pitch_base).unsqueeze(-1)
+        gt_pitch_error = (pitch_g_ref_obs - muzzle_pitch_base).unsqueeze(-1)
 
 
-        policy_obs = torch.cat(
-            [
-                policy_pos_base,                 # 3
-                policy_vel_base,                 # 3
-                policy_distance,                 # 1
-                policy_yaw_error,                # 1
-                policy_pitch_error,              # 1
-                yaw.unsqueeze(-1),               # 1
-                pitch.unsqueeze(-1),             # 1
-                yaw_vel.unsqueeze(-1),           # 1
-                pitch_vel.unsqueeze(-1),         # 1
-                root_lin_vel_b,                  # 3
-                root_ang_vel_b,                  # 3
-                projected_gravity_b,             # 3
-                dog_moving_flag,                 # 1
-                prev_actions,                    # 3
-                fire_charge_obs,                 # 1
-                fire_cooldown_ratio,             # 1
-            ],
-            dim=-1,
-        )
+
+        # -------------------------------------------------
+        # Observation normalization + structured obs layout
+        #
+        # Actor:
+        #   actor_target_obs: 9
+        #   robot_obs:        19
+        #   total:            28
+        #
+        # Critic:
+        #   critic_target_obs: 12
+        #   robot_obs:         19
+        #   total:             31
+        # -------------------------------------------------
 
         # critic privileged state
         target_acc_base = self._rotate_world_to_yaw_only_local(
@@ -2719,29 +2927,212 @@ class TurretAimEnv(DirectRLEnv):
             self._target_acc_w,
         )
 
-        critic_obs = torch.cat(
+        eps = 1e-6
+
+        # -----------------------------
+        # 1) Network-input normalization
+        # -----------------------------
+        # Target position is encoded as unit LOS direction.
+        # Target distance is centered to the configured spawn range.
+        r_min = float(self.cfg.target_radius_range[0])
+        r_max = float(self.cfg.target_radius_range[1])
+        dist_mid = 0.5 * (r_min + r_max)
+        dist_half = max(0.5 * (r_max - r_min), 1.0)
+
+        # -----------------------------
+        # Angle / error normalization scales
+        # -----------------------------
+        # 关节角：表示炮台当前姿态，仍然按物理关节范围归一化到 [-1, 1]
+        joint_yaw_scale = math.pi
+        joint_pitch_scale = max(
+            abs(float(self.cfg.pitch_min)),
+            abs(float(self.cfg.pitch_max)),
+            eps,
+        )
+
+        # 瞄准误差：表示“还差多少才能打中”，需要高增益，不要除以 pi
+        # 0.05rad -> 1.0
+        # 0.01rad -> 0.2
+        aim_error_obs_scale = max(
+            float(getattr(self.cfg, "aim_error_obs_scale", 0.05)),
+            eps,
+        )
+        aim_error_obs_clip = max(
+            float(getattr(self.cfg, "aim_error_obs_clip", 5.0)),
+            1.0,
+        )
+
+        joint_vel_scale = 5.0
+        root_lin_vel_scale = 2.0
+        root_ang_vel_scale = 3.0
+
+        target_speed_scale = max(
+            abs(float(self.cfg.target_speed_range[0])),
+            abs(float(self.cfg.target_speed_range[1])),
+            abs(float(self.cfg.target_vertical_speed_range[0])),
+            abs(float(self.cfg.target_vertical_speed_range[1])),
+            1.0,
+        )
+        target_vel_scale = target_speed_scale + root_lin_vel_scale
+
+        target_acc_scale = max(
+            abs(float(self.cfg.target_acc_range[0])),
+            abs(float(self.cfg.target_acc_range[1])),
+            abs(float(self.cfg.target_vertical_acc_range[0])),
+            abs(float(self.cfg.target_vertical_acc_range[1])),
+            1.0,
+        )
+
+        charge_scale = max(float(self.cfg.fire_charge_max), eps)
+
+        def _soft_norm(x: torch.Tensor, scale: float) -> torch.Tensor:
+            return torch.tanh(x / max(float(scale), eps))
+
+        def _joint_angle_norm(x: torch.Tensor, scale: float) -> torch.Tensor:
+            return torch.clamp(x / max(float(scale), eps), -1.0, 1.0)
+
+        def _aim_error_norm(x: torch.Tensor) -> torch.Tensor:
+            return torch.clamp(
+                x / aim_error_obs_scale,
+                -aim_error_obs_clip,
+                aim_error_obs_clip,
+            )
+
+        # -----------------------------
+        # 2) Target-side normalization
+        # -----------------------------
+        policy_distance_valid = policy_distance > eps
+        policy_distance_safe = policy_distance.clamp_min(eps)
+
+        policy_pos_base_n = torch.where(
+            policy_distance_valid,
+            policy_pos_base / policy_distance_safe,
+            torch.zeros_like(policy_pos_base),
+        )
+        policy_vel_base_n = _soft_norm(policy_vel_base, target_vel_scale)
+        policy_distance_n = torch.where(
+            policy_distance_valid,
+            (policy_distance - dist_mid) / dist_half,
+            torch.zeros_like(policy_distance),
+        )
+
+        policy_yaw_error_n = _aim_error_norm(policy_yaw_error)
+        policy_pitch_error_n = _aim_error_norm(policy_pitch_error)
+
+        gt_distance_col = gt_distance.unsqueeze(-1)
+        gt_distance_safe = gt_distance_col.clamp_min(eps)
+
+        gt_pos_base_n = gt_pos_base / gt_distance_safe
+        gt_vel_base_n = _soft_norm(gt_vel_base, target_vel_scale)
+        gt_distance_n = (gt_distance_col - dist_mid) / dist_half
+
+        gt_yaw_error_n = _aim_error_norm(gt_yaw_error)
+        gt_pitch_error_n = _aim_error_norm(gt_pitch_error)
+
+        target_acc_base_n = _soft_norm(target_acc_base, target_acc_scale)
+
+        # -----------------------------
+        # 3) Robot-side normalization
+        # -----------------------------
+        yaw_n = _joint_angle_norm(wrap_to_pi(yaw).unsqueeze(-1), joint_yaw_scale)
+        pitch_n = _joint_angle_norm(pitch.unsqueeze(-1), joint_pitch_scale)
+
+        yaw_vel_n = _soft_norm(yaw_vel.unsqueeze(-1), joint_vel_scale)
+        pitch_vel_n = _soft_norm(pitch_vel.unsqueeze(-1), joint_vel_scale)
+
+        root_lin_vel_b_n = _soft_norm(root_lin_vel_b, root_lin_vel_scale)
+        root_ang_vel_b_n = _soft_norm(root_ang_vel_b, root_ang_vel_scale)
+
+        projected_gravity_b = torch.clamp(projected_gravity_b, -1.0, 1.0)
+        dog_moving_flag = torch.clamp(dog_moving_flag, 0.0, 1.0)
+        prev_actions = torch.clamp(prev_actions, -1.0, 1.0)
+
+        fire_charge_n = torch.clamp(fire_charge_obs / charge_scale, 0.0, 1.0)
+        fire_cooldown_ratio = torch.clamp(fire_cooldown_ratio, 0.0, 1.0)
+
+
+        # projected_gravity_b 本身大约就在 [-1, 1]
+        # dog_moving_flag 本身是 0/1
+        # prev_actions 本身大约是 [-1, 1]
+        # fire_cooldown_ratio 本身是 0~1
+
+        # -----------------------------
+        # 4) Actor target branch: 9 dims
+        # -----------------------------
+        actor_target_obs = torch.cat(
             [
-                gt_pos_base,                     # 3
-                gt_vel_base,                     # 3
-                gt_distance.unsqueeze(-1),       # 1
-                gt_yaw_error,                    # 1
-                gt_pitch_error,                  # 1
-                yaw.unsqueeze(-1),               # 1
-                pitch.unsqueeze(-1),             # 1
-                yaw_vel.unsqueeze(-1),           # 1
-                pitch_vel.unsqueeze(-1),         # 1
-                root_lin_vel_b,                  # 3
-                root_ang_vel_b,                  # 3
-                projected_gravity_b,             # 3
-                dog_moving_flag,                 # 1
-                prev_actions,                    # 3
-                fire_charge_obs,                 # 1
-                fire_cooldown_ratio,             # 1
-                target_acc_base,                 # 3
+                policy_pos_base_n,       # 3
+                policy_vel_base_n,       # 3
+                policy_distance_n,       # 1
+                policy_yaw_error_n,      # 1
+                policy_pitch_error_n,    # 1
             ],
             dim=-1,
         )
 
+        # -----------------------------
+        # 5) Shared robot branch: 19 dims
+        # -----------------------------
+        robot_obs = torch.cat(
+            [
+                yaw_n,                   # 1
+                pitch_n,                 # 1
+                yaw_vel_n,               # 1
+                pitch_vel_n,             # 1
+                root_lin_vel_b_n,        # 3
+                root_ang_vel_b_n,        # 3
+                projected_gravity_b,     # 3
+                dog_moving_flag,         # 1
+                prev_actions,            # 3
+                fire_charge_n,           # 1
+                fire_cooldown_ratio,     # 1
+            ],
+            dim=-1,
+        )
+
+        # -----------------------------
+        # 6) Critic target branch: 12 dims
+        #
+        # 注意：
+        # target_acc_base 必须放在 critic target branch 里，
+        # 这样和 critic_target_dim=12, critic_robot_dim=19 对齐。
+        # -----------------------------
+        critic_target_obs = torch.cat(
+            [
+                gt_pos_base_n,           # 3
+                gt_vel_base_n,           # 3
+                gt_distance_n,           # 1
+                gt_yaw_error_n,          # 1
+                gt_pitch_error_n,        # 1
+                target_acc_base_n,       # 3
+            ],
+            dim=-1,
+        )
+
+        # -----------------------------
+        # 7) Final obs
+        # -----------------------------
+        policy_obs = torch.cat([actor_target_obs, robot_obs], dim=-1)    # 28
+        critic_obs = torch.cat([critic_target_obs, robot_obs], dim=-1)   # 31
+
+        # -----------------------------
+        # 8) Shape guard
+        # -----------------------------
+        if policy_obs.shape[-1] != self.cfg.observation_space:
+            raise RuntimeError(
+                f"policy_obs dim mismatch: got {policy_obs.shape[-1]}, "
+                f"expected {self.cfg.observation_space}"
+            )
+
+        if critic_obs.shape[-1] != self.cfg.state_space:
+            raise RuntimeError(
+                f"critic_obs dim mismatch: got {critic_obs.shape[-1]}, "
+                f"expected {self.cfg.state_space}"
+            )
+
+        # -----------------------------
+        # 9) Invalid diagnostics before sanitizing
+        # -----------------------------
         invalid_policy = ~torch.isfinite(policy_obs).all(dim=-1)
         invalid_critic = ~torch.isfinite(critic_obs).all(dim=-1)
         invalid_obs = invalid_policy | invalid_critic
@@ -2756,6 +3147,10 @@ class TurretAimEnv(DirectRLEnv):
                     "gt_pos_base": gt_pos_base,
                     "gt_vel_base": gt_vel_base,
                     "gt_distance": gt_distance,
+                    "policy_pos_base": policy_pos_base,
+                    "policy_vel_base": policy_vel_base,
+                    "policy_distance": policy_distance,
+                    "target_acc_base": target_acc_base,
                     "rl_pred_ready": self._rl_pred_ready,
                     "rl_pred_pos_base": self._rl_pred_pos_base,
                     "rl_pred_vel_base": self._rl_pred_vel_base,
@@ -2768,6 +3163,25 @@ class TurretAimEnv(DirectRLEnv):
                     "target_acc_w": self._target_acc_w,
                 },
             )
+
+        # -----------------------------
+        # 10) Safety sanitize + clip
+        #
+        # 归一化后，正常观测基本不会超过 [-10, 10]。
+        # 这里的 clamp 只作为异常保护，不再破坏 80~150m 距离信息。
+        # -----------------------------
+        policy_obs = torch.nan_to_num(
+            policy_obs,
+            nan=0.0,
+            posinf=10.0,
+            neginf=-10.0,
+        )
+        critic_obs = torch.nan_to_num(
+            critic_obs,
+            nan=0.0,
+            posinf=10.0,
+            neginf=-10.0,
+        )
 
         policy_obs = torch.clamp(policy_obs, -10.0, 10.0)
         critic_obs = torch.clamp(critic_obs, -10.0, 10.0)
@@ -2807,11 +3221,13 @@ class TurretAimEnv(DirectRLEnv):
         """
         计算真实枪口 forward 方向在 yaw-only base 坐标系下的 yaw / pitch。
 
-        这样 actual angle 和 _compute_muzzle_based_aim_refs() 里的参考角
-        使用同一个坐标系：
-            - yaw-only base
-            - z 轴与世界重力对齐
-            - 原点差异不影响方向角
+        坐标约定：
+            yaw   = atan2(y, x)
+            pitch = atan2(-z, sqrt(x^2 + y^2))
+
+        注意：
+        - yaw 的 atan2 第二个参数不能 clamp 到正数，否则 x<0 时 yaw 会被算错。
+        - pitch 正方向为向下，因此使用 -z。
         """
         _, _, muzzle_fwd_w = self._compute_turret_frame()
         root_quat_w = self.turret.data.root_quat_w
@@ -2823,7 +3239,7 @@ class TurretAimEnv(DirectRLEnv):
         y = fwd_base[:, 1]
         z = fwd_base[:, 2]
 
-        yaw = torch.atan2(y, x.clamp(min=1e-6))
+        yaw = torch.atan2(y, x)
         pitch = torch.atan2(-z, torch.sqrt(x * x + y * y).clamp_min(1e-6))
 
         return yaw, pitch
@@ -2890,11 +3306,33 @@ class TurretAimEnv(DirectRLEnv):
         )
         
 
-        # bad fire 改成“定值 + 与弹道最小距离相关”的混合惩罚
-        bad_fire_dist_scale = torch.clamp(min_ballistic_dist, 0.0, 1.0)
-        bad_fire_penalty = bad_fire.float() * (self.cfg.r_bad_fire * (0.3 + 0.7 * bad_fire_dist_scale))
-        ballistic_score = torch.exp(
-            -((min_ballistic_dist / 0.25).clamp(max=5.0) ** 2)
+        # -------------------------------------------------
+        # Ballistic shaping:
+        # 远距离有梯度 + 近距离精修
+        # -------------------------------------------------
+        d = min_ballistic_dist
+
+        # 远距离项：6m 仍然有明显信号，不会像 exp 那样直接接近 0
+        ballistic_far = 1.0 / (1.0 + (d / 3.0) ** 2)
+
+        # 近距离项：只在 0.3m 左右强烈区分，用来逼近 hit_radius
+        ballistic_near = torch.exp(-((d / 0.30).clamp(max=10.0) ** 2))
+
+        ballistic_score = 0.4 * ballistic_far + 1.2 * ballistic_near
+
+        # Small guard against policies that aim forever and never fire.
+        near_timeout = self.episode_length_buf >= self.max_episode_length - 2
+        no_fire_timeout_penalty = (
+            self.cfg.r_no_fire_timeout_penalty
+            * (near_timeout & (self._episode_fire_count == 0) & aiming_enabled).float()
+        )
+
+        # -------------------------------------------------
+        # Bad fire penalty:
+        # 错得越远，开火惩罚越大；3m 以后封顶，避免过大
+        # -------------------------------------------------
+        bad_fire_penalty = bad_fire.float() * (
+            -2.0 - 3.0 * torch.clamp(d, 0.0, 3.0)
         )
 
         reward = (
@@ -2904,6 +3342,7 @@ class TurretAimEnv(DirectRLEnv):
             + self.cfg.r_hit * hit_now.float()
             + first_shot_hit_bonus
             + repeat_fire_penalty
+            + no_fire_timeout_penalty
             + bad_fire_penalty
             + self.cfg.r_fire_cost * fire_now.float() * aiming_mask
             + self.cfg.w_rate * delta_pen * aiming_mask
@@ -3218,13 +3657,13 @@ class TurretAimEnv(DirectRLEnv):
         )
 
         # ===== reset debug: 写入仿真前检查数据是否正常 =====
-        if self.cfg.debug_diagnostics:
-            print("[TurretAimEnv][reset debug] default_root_state finite =", torch.isfinite(default_root_state).all().item())
-            print("[TurretAimEnv][reset debug] joint_pos finite =", torch.isfinite(joint_pos).all().item())
-            print("[TurretAimEnv][reset debug] joint_vel finite =", torch.isfinite(joint_vel).all().item())
-            print("[TurretAimEnv][reset debug] default_root_state[0] =", default_root_state[0].detach().cpu().tolist())
-            print("[TurretAimEnv][reset debug] joint_pos[0] =", joint_pos[0].detach().cpu().tolist())
-            print("[TurretAimEnv][reset debug] joint_vel[0] =", joint_vel[0].detach().cpu().tolist())
+        # if self.cfg.debug_diagnostics:
+        #     print("[TurretAimEnv][reset debug] default_root_state finite =", torch.isfinite(default_root_state).all().item())
+        #     print("[TurretAimEnv][reset debug] joint_pos finite =", torch.isfinite(joint_pos).all().item())
+        #     print("[TurretAimEnv][reset debug] joint_vel finite =", torch.isfinite(joint_vel).all().item())
+        #     print("[TurretAimEnv][reset debug] default_root_state[0] =", default_root_state[0].detach().cpu().tolist())
+        #     print("[TurretAimEnv][reset debug] joint_pos[0] =", joint_pos[0].detach().cpu().tolist())
+        #     print("[TurretAimEnv][reset debug] joint_vel[0] =", joint_vel[0].detach().cpu().tolist())
 
         self.turret.write_root_pose_to_sim(default_root_state[:, :7], env_ids_sim)
         self.turret.write_root_velocity_to_sim(default_root_state[:, 7:], env_ids_sim)
