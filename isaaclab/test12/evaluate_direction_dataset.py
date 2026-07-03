@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 import argparse
 import csv
@@ -14,7 +14,7 @@ import numpy as np
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from test10.evaluate_direction import _angle_diff, _read_direction_csv
+from test12.evaluate_direction import _angle_diff, _read_direction_csv
 
 
 def parse_args() -> argparse.Namespace:

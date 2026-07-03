@@ -7,7 +7,7 @@ import sys
 if __package__ is None or __package__ == "":
     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from test10.camera_geometry import CameraIntrinsics
+from test12.camera_geometry import CameraIntrinsics
 
 from test12.ostrack_tracker import OSTrackBoxTracker
 from test12.pipeline import (
@@ -24,7 +24,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
             "Estimate target direction from an initial box and OSTrack bbox tracking. "
-            "The output CSV is compatible with test10.evaluate_direction."
+            "The output CSV is compatible with test12.evaluate_direction."
         )
     )
     parser.add_argument("--rgb_dir", required=True, type=Path, help="Directory of sorted RGB frames.")

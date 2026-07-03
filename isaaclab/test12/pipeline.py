@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Iterable, Mapping
 import math
 
-from test10.camera_geometry import CameraIntrinsics, bbox_center_xy
+from .camera_geometry import CameraIntrinsics, bbox_center_xy
 
 from .ostrack_tracker import TrackedBox
 

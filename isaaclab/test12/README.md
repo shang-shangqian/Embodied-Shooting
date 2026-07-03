@@ -26,7 +26,7 @@ OSTrack/
 
 ## 单序列运行
 
-```bash
+```
 python -m test12.estimate_video \
   --rgb_dir test10_direction_eval_dataset/sequences/seq_000000_env_000/rgb \
   --initial_box_file test10_direction_eval_dataset/sequences/seq_000000_env_000/initial_box.txt \
@@ -42,15 +42,15 @@ python -m test12.estimate_video \
 
 评估单序列误差：
 
-```bash
-python -m test10.evaluate_direction \
+```
+python -m test12.evaluate_direction \
   --est_csv test12_outputs/seq_000000_est.csv \
   --gt_csv test10_direction_eval_dataset/sequences/seq_000000_env_000/ground_truth_direction.csv
 ```
 
 ## 数据集批量评测
 
-```bash
+```
 python -m test12.evaluate_direction_dataset \
   --dataset_dir test10_direction_eval_dataset \
   --fps 50 \

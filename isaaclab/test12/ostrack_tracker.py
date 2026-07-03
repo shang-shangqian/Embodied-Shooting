@@ -8,7 +8,7 @@ import os
 import time
 import sys
 
-from test10.camera_geometry import bbox_clip
+from .camera_geometry import bbox_clip
 
 
 @dataclass
