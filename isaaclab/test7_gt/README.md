@@ -12,3 +12,8 @@
 - `asym_central_value_gru_network_gt.py`：GT 版本训练使用的 rl-games 自定义网络。采用非对称 actor/critic 结构，actor 使用策略观测，critic 使用特权观测，并用 GRU 处理时序信息。
 
 
+
+### 测试指令示例
+```bash
+./isaaclab.sh -p source/standalone/test7_gt/eval_with_track_gt.py --headless --checkpoint runs/turret_aim_mixed_06-12-00-38-31/nn --which last --locomotion_policy logs/rsl_rl/deeprobotics_lite3_turret_flat/2026-03-10_20-28-54/exported/policy.pt --num_envs 32 --episodes 500 --case ss
+```

@@ -15,3 +15,29 @@
 - `turret/`：炮塔相关 USD 资产和配置。
 - `lite3/configuration/`、`turret/configuration/`：分别存放机器人和炮塔的 base、physics、sensor 等 USD 配置文件。
 
+
+### 训练指令示例
+```bash
+./isaaclab.sh -p source/standalone/test7_1/train_turret_mixed.py \
+  --locomotion_policy logs/rsl_rl/deeprobotics_lite3_turret_flat/2026-03-10_20-28-54/exported/policy.pt \
+  --vision_model source/standalone/test4/vision_model/vision_runs/vision_runs_cnn_only/04-27-17-54/vision_best.pth \
+  --velocity_model source/standalone/test11/speed_prediction/gru_runs/04-28-13-59/best_model.pt \
+  --num_envs 4 \
+  --max_epochs 25000 \
+  --checkpoint runs/turret_aim_mixed_04-29-00-59-06 \
+  --which best
+```
+
+### 测试指令示例
+```bash
+./isaaclab.sh -p source/standalone/test7_1/eval_with_track.py \
+  --checkpoint runs/turret_aim_mixed_04-29-00-59-06/nn/turret_aim.pth \
+  --which best \
+  --locomotion_policy logs/rsl_rl/deeprobotics_lite3_turret_flat/2026-03-10_20-28-54/exported/policy.pt \
+  --vision_model source/standalone/test4/vision_model/vision_runs/vision_runs_cnn_only/04-27-17-54/vision_best.pth \
+  --velocity_model source/standalone/test11/speed_prediction/gru_runs/04-28-13-59/best_model.pt \
+  --num_envs 1 \
+  --episodes 10 \
+  --case ss \
+  --headless
+```
