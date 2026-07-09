@@ -85,7 +85,9 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     training_stage: int = 1  # 训练阶段
 
     # simulation
-    sim: SimulationCfg = SimulationCfg(dt=0.005, render_interval=decimation)
+    # Fabric 直接从物理缓冲区同步大规模并行环境状态，避免逐帧走 USD 状态同步。
+    # 相机只把 TiledCamera 当作 RGB 数据源；几何位姿仍由 TORSO + 固定外参重建。
+    sim: SimulationCfg = SimulationCfg(dt=0.005, render_interval=decimation, use_fabric=True)
 
     # scene
     scene: InteractiveSceneCfg = InteractiveSceneCfg(num_envs=64, env_spacing=200.0, replicate_physics=True)
@@ -147,7 +149,10 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
         spawn=None,
         width=camera_width,
         height=camera_height,
-        update_latest_camera_pose=True,
+        # 不让 TiledCamera 通过 XFormPrimView 再读取一次相机位姿。
+        # 这条读取路径在 Fabric/USDRT 下既有额外开销，也可能触发 hierarchy 初始化问题；
+        # 本环境的标签、投影和 raycast 已统一使用 runtime 重建位姿。
+        update_latest_camera_pose=False,
     )
 
     # --- MultiMeshRayCaster: 挂到 TORSO，用多条射线模拟 runtime lidar 的锥形束 ---
@@ -773,7 +778,7 @@ class TurretAimEnv(DirectRLEnv):
                     ).Set(src_attr.Get())
 
             # clippingRange 需要单独处理
-            # Match test_temp collection: force proxy camera intrinsics from cfg
+            # Match test11 collection: force proxy camera intrinsics from cfg
             # and use the proxy only as an RGB source with runtime-rebuilt pose.
             proxy_cam.GetProjectionAttr().Set(str(self.cfg.camera_projection_type))
             proxy_cam.GetFocalLengthAttr().Set(float(self.cfg.camera_focal_length))
@@ -935,14 +940,9 @@ class TurretAimEnv(DirectRLEnv):
         if not prim.IsValid():
             return
 
-        # 强制标准化，确保只有 translate/orient/scale 这套标准 op 顺序
-        sim_utils.standardize_xform_ops(
-            prim,
-            translation=(0.0, 0.0, 0.0),
-            orientation=(1.0, 0.0, 0.0, 0.0),
-            scale=(1.0, 1.0, 1.0),
-        )
-
+        # proxy 在 _ensure_runtime_camera_proxies() 创建时已经标准化过。
+        # 这里不能每帧再次 standardize_xform_ops()，否则会先短暂写入单位位姿，
+        # 既增加 USD/Fabric 同步开销，也可能让渲染器捕获到中间状态而产生闪烁。
         xf = UsdGeom.Xformable(prim)
         ops = xf.GetOrderedXformOps()
 

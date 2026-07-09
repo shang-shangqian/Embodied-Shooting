@@ -26,6 +26,7 @@
   --max_epochs 25000 \
   --checkpoint runs/turret_aim_mixed_04-29-00-59-06 \
   --which best
+  --headless
 ```
 
 ### 测试指令示例

@@ -299,10 +299,10 @@ def main():
     parser.add_argument(
         "--velocity_model_def",
         type=str,
-        default="",
+        default="source/standalone/test11/speed_prediction_model.py",
         help=(
             "Optional path to speed_prediction_model.py that defines VelocityPredictorGRU. "
-            "Use this when the velocity module was trained from a directory such as test_11."
+            "Defaults to the renamed test11 directory."
         ),
     )
     parser.add_argument(
@@ -333,7 +333,7 @@ def main():
         "--bridge_velocity_sequence_stride",
         type=int,
         default=3,
-        help="Env-step stride for velocity-GRU sequence samples. Default matches test_temp collection.",
+        help="Env-step stride for velocity-GRU sequence samples. Default matches test11 collection.",
     )
     parser.add_argument(
         "--bridge_disable_env_gt_fallback",
@@ -427,12 +427,13 @@ def main():
     env_cfg = TurretAimEnvCfg()
     env_cfg.scene.num_envs = args.num_envs
     # -----------------------------
-    # 关键：关闭 Fabric
-    # 避免 XFormPrimView 在 camera 初始化时走 usdrt.hierarchy 分支
+    # 显式启用 Fabric，加速并行环境的物理状态同步。
+    # TiledCamera 不再读取自身 pose，因此不会进入旧的
+    # XFormPrimView/usdrt.hierarchy 相机位姿路径。
     # -----------------------------
     if hasattr(env_cfg, "sim") and hasattr(env_cfg.sim, "use_fabric"):
-        env_cfg.sim.use_fabric = False
-        print("[train-mixed] env_cfg.sim.use_fabric = False")
+        env_cfg.sim.use_fabric = True
+        print("[train-mixed] env_cfg.sim.use_fabric = True")
 
     # 为了覆盖四种情况，底层配置需要同时支持移动底盘 + 动态目标。
     env_cfg.training_stage = 2
@@ -523,7 +524,7 @@ def main():
         if not args.velocity_model.strip():
             raise ValueError(
                 "--enable_rl_perception_bridge is True, but --velocity_model is empty. "
-                "Pass the velocity GRU checkpoint trained with test_temp/train_gru_velocity.py."
+                "Pass the velocity GRU checkpoint trained with test11/train_gru_velocity.py."
             )
 
         bridge = install_rl_perception_bridge(

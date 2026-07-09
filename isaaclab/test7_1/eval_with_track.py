@@ -821,7 +821,7 @@ def main():
     parser.add_argument(
         "--velocity_model_def",
         type=str,
-        default="source/standalone/test11/speed_prediction/speed_prediction_model.py",
+        default="source/standalone/test11/speed_prediction_model.py",
         help="Path to speed_prediction_model.py used to define the velocity GRU. Optional if it is next to --velocity_model.",
     )
     parser.add_argument(
@@ -852,7 +852,7 @@ def main():
         "--bridge_velocity_sequence_stride",
         type=int,
         default=3,
-        help="Env-step stride for velocity-GRU sequence samples. Default matches test_temp collection.",
+        help="Env-step stride for velocity-GRU sequence samples. Default matches test11 collection.",
     )
 
     parser.add_argument(
@@ -925,12 +925,13 @@ def main():
     env_cfg.scene.num_envs = int(args.num_envs)
 
     # -----------------------------
-    # 关键：关闭 Fabric
-    # 避免 XFormPrimView 在 camera 初始化时走 usdrt.hierarchy 分支
+    # 显式启用 Fabric，加速并行环境的物理状态同步。
+    # TiledCamera 不再读取自身 pose，因此不会进入旧的
+    # XFormPrimView/usdrt.hierarchy 相机位姿路径。
     # -----------------------------
     if hasattr(env_cfg, "sim") and hasattr(env_cfg.sim, "use_fabric"):
-        env_cfg.sim.use_fabric = False
-        print("[eval] env_cfg.sim.use_fabric = False")
+        env_cfg.sim.use_fabric = True
+        print("[eval] env_cfg.sim.use_fabric = True")
 
     # 与训练时保持一致：底层环境统一支持 moving base + dynamic target，
     # 再通过 case mask 在每个 episode 约束成 ss/sd/ds/dd。
@@ -998,7 +999,7 @@ def main():
         if not args.velocity_model.strip():
             raise ValueError(
                 "--enable_rl_perception_bridge is True, but --velocity_model is empty. "
-                "Pass the velocity GRU checkpoint trained with test_temp/train_gru_velocity.py."
+                "Pass the velocity GRU checkpoint trained with test11/train_gru_velocity.py."
             )
 
         bridge = install_rl_perception_bridge(

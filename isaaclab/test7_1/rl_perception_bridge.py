@@ -179,8 +179,9 @@ def load_velocity_model(
     candidate_model_def_paths.extend(
         [
             model_path.parent / "speed_prediction_model.py",
-            this_file.parent.parent / "test_11" / "speed_prediction_model.py",
-            this_file.parent.parent / "test_temp" / "speed_prediction_model.py",
+            model_path.parent.parent.parent / "speed_prediction_model.py",
+            this_file.parent.parent / "test11" / "speed_prediction_model.py",
+            this_file.parent.parent / "test11" / "speed_prediction" / "speed_prediction_model.py",
         ]
     )
 
