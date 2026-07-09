@@ -22,7 +22,7 @@
   --locomotion_policy logs/rsl_rl/deeprobotics_lite3_turret_flat/2026-03-10_20-28-54/exported/policy.pt \
   --vision_model source/standalone/test4/vision_model/vision_runs/vision_runs_cnn_only/04-27-17-54/vision_best.pth \
   --velocity_model source/standalone/test11/speed_prediction/gru_runs/04-28-13-59/best_model.pt \
-  --num_envs 4 \
+  --num_envs 64 \
   --max_epochs 25000 \
   --checkpoint runs/turret_aim_mixed_04-29-00-59-06 \
   --which best
