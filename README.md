@@ -7,5 +7,5 @@
 | `test12/` | 方向预测模块（OSTrack） |
 | `test4/` | 方向预测模块（CNN） |
 | `test7_1/` | 完整代码 |
-| `test7_gt/` | 强化学习决策网络 |
+| `test7_2_weight/` | 强化学习决策网络(GT值) |
 | `test_temp/` | 速度预测模块 |
