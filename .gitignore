@@ -7,6 +7,10 @@ build/
 dist/
 outputs/
 logs/
+runs/
+train_logs/
+isaaclab/integrated_shooting_chain/video/
+*.mp4
 checkpoints/
 *.pth
 *.pth.tar
