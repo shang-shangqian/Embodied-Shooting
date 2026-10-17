@@ -1,5 +1,14 @@
 # 具身射击系统
 
+本分支新增可安装的 [LK + OSTrack 多目标视觉模块](isaaclab/test_lk_ostrack/README.md)，
+包含 CPU 演示、OSTrack 精跟踪、Isaac Lab 采集和离线评估。环境配置和权重准备完成后，
+可直接运行现成入口，无需另写脚本。
+
+```bash
+python -m pip install -e '.[dev]'
+python -m test_lk_ostrack.demo
+```
+
 ## 项目结构
 
 | 目录 | 说明 |
