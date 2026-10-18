@@ -10,4 +10,3 @@
 | [integrated_shooting_chain/](integrated_shooting_chain/README.md) | 感知、速度、决策的联调、多目标控制和录像。 |
 | [test7_2_weight/](test7_2_weight/README.md) | 决策网络训练和仿真评估。 |
 
-环境安装见[总 README](../README.md#安装)，各模块的训练/测试命令见对应链接。
