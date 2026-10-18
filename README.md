@@ -16,5 +16,5 @@ python -m test_lk_ostrack.demo
 
 炮塔决策模块位于 `isaaclab/test7_2_weight/`，见其
 [安装与运行说明](isaaclab/test7_2_weight/README.md)。
-`integrated_shooting_chain/` 和 `speed_prediction/` 仅包含决策模块调用的控制链、
+`isaaclab/integrated_shooting_chain/` 和 `isaaclab/test11/speed_prediction/` 仅包含决策模块调用的控制链、
 录像和速度估计运行代码，不包含其他实验目录、训练记录或权重。

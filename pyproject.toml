@@ -24,7 +24,7 @@ lk-ostrack-check = "test_lk_ostrack.check_multi_target_dataset:main"
 
 [tool.setuptools]
 package-dir = {"" = "isaaclab"}
-packages = ["test_lk_ostrack", "test_lk_ostrack.recoil", "test7_2_weight", "integrated_shooting_chain", "speed_prediction", "speed_prediction.common", "speed_prediction.legacy_gru", "speed_prediction.taq_gru"]
+packages = ["test_lk_ostrack", "test_lk_ostrack.recoil", "test7_2_weight", "integrated_shooting_chain", "test11", "test11.speed_prediction", "test11.speed_prediction.common", "test11.speed_prediction.legacy_gru", "test11.speed_prediction.taq_gru"]
 
 [tool.setuptools.package-data]
 test7_2_weight = ["*.usd", "*.urdf", "*.md", "lite3/**/*.usd", "turret/**/*.usd"]

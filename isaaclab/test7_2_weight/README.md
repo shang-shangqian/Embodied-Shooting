@@ -85,7 +85,7 @@ PPO 参数由 `ppo_training_config.py` 提供，入口 `--help` 可查看全部�
 - 本目录保留训练、评估、环境、双 GRU 网络、PPO 配置、目标跟随、清场和旧版感知桥。
 - `vision_model1.py` 是旧版可选 CNN 感知桥需要的模型定义，来自原 `test4`，只复制模型文件。
 - `../integrated_shooting_chain/` 包含本模块调用的感知桥、调度、诊断及录像运行代码。
-- `../speed_prediction/` 包含速度 GRU/TAQ 模型、在线推理和必要预处理，不包含历史训练数据或实验输出。
+- `../test11/speed_prediction/` 包含速度 GRU/TAQ 模型、在线推理和必要预处理，不包含历史训练数据或实验输出。
 - `../test_lk_ostrack/` 复用分支已有的视觉模块及测距传感器兼容代码。
 - USD 组合资产复用同源的本地相机版本，消除远程相机引用，其余机器人资产随目录提供。
 

@@ -62,13 +62,13 @@ def load_taq_velocity_estimator(checkpoint_path: str | Path, *, device: str | An
     root = _standalone_root()
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
-    from speed_prediction.online_taq_velocity import OnlineTAQVelocityEstimator
-    from speed_prediction.time_aware_velocity_data import (
+    from test11.speed_prediction.online_taq_velocity import OnlineTAQVelocityEstimator
+    from test11.speed_prediction.time_aware_velocity_data import (
         TAQ_LABEL_SEMANTICS,
         TAQ_SCHEMA_VERSION,
         taq_model_config_from_checkpoint,
     )
-    from speed_prediction.time_aware_velocity_model import TimeAwareQualityGatedGRU
+    from test11.speed_prediction.time_aware_velocity_model import TimeAwareQualityGatedGRU
 
     path = Path(checkpoint_path).expanduser()
     if not path.exists():
@@ -116,7 +116,7 @@ def load_legacy_gru_velocity_estimator(checkpoint_path: str | Path, *, device: s
     root = _standalone_root()
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
-    from speed_prediction.legacy_gru.online_gru_velocity import load_legacy_checkpoint
+    from test11.speed_prediction.legacy_gru.online_gru_velocity import load_legacy_checkpoint
     from .legacy_gru_adapter import OnlineLegacyGRUEstimator
 
     path = Path(checkpoint_path).expanduser()

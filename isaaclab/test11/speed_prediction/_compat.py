@@ -6,7 +6,7 @@ from typing import Any
 
 
 def forward_module(module_name: str, target: str, namespace: dict[str, Any]) -> None:
-    implementation = import_module(f"speed_prediction.{target}")
+    implementation = import_module(f"test11.speed_prediction.{target}")
     if module_name == "__main__":
         entry_point = getattr(implementation, "main", None)
         if entry_point is not None:

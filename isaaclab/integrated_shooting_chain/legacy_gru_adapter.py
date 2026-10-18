@@ -39,8 +39,8 @@ class OnlineLegacyGRUEstimator:
             self._states.pop(int(target_id), None)
 
     def update(self, target_id: int, observation: Any) -> LegacyGRUVelocityEstimate | None:
-        from speed_prediction.common.time_aware_velocity_data import SOURCE_NAME_TO_ID, TrackerSource
-        from speed_prediction.legacy_gru.online_gru_velocity import OnlineLegacyGRU
+        from test11.speed_prediction.common.time_aware_velocity_data import SOURCE_NAME_TO_ID, TrackerSource
+        from test11.speed_prediction.legacy_gru.online_gru_velocity import OnlineLegacyGRU
 
         identifier = int(target_id)
         source = observation.source

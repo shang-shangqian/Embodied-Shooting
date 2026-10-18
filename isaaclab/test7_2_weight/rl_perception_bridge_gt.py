@@ -165,7 +165,7 @@ def load_velocity_model(model_path: str | Path, device: str | torch.device):
     if str(standalone_dir) not in sys.path:
         sys.path.insert(0, str(standalone_dir))
 
-    from speed_prediction.legacy_gru.speed_prediction_model import VelocityPredictorGRU
+    from test11.speed_prediction.legacy_gru.speed_prediction_model import VelocityPredictorGRU
 
     ckpt = torch.load(model_path, map_location=device, weights_only=False)
 
