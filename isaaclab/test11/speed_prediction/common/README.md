@@ -1,16 +1,17 @@
-# 共享数据与特征工具
+# 共享数据与物理接口
 
 | 文件 | 作用 |
 | --- | --- |
 | `__init__.py` | 共享工具包定义。 |
-| `time_aware_velocity_data.py` | 定义 TAQ-v2 标签、跟踪来源和 24 维特征；实现坐标变换、因果差分、运动补偿速度基线、数据块读写、数据集和归一化统计。 |
+| `time_aware_velocity_data.py` | TAQ-v2 数据/标签、24 维因果特征、速度基线、数据集和归一化。 |
+| `stage2_degradation.py` | 图像/跟踪/测距/时序/本体观测退化配置、模拟和计数。 |
+| `sensor_time_contract.py` | 传感器包、物理采样门和每回合预热协议。 |
+| `filter_state_output.py` | 统一滤波状态输出及速度相关接口。 |
+| `target_motion.py` | 固定视场平面和距离壳内连续运动、碰撞时间反射及初始化。 |
 
-本目录是函数库，没有独立训练/评估入口。数据标签表示相对平移速度，不能直接用旋转坐标系中的位置差分代替。
-
-从仓库根目录检查数据格式常量：
+本目录由[采集、训练和测试入口](../README.md)调用，没有独立训练入口。
+验证相关数值和数据协议，从仓库根目录执行：
 
 ```bash
-python -c "from test11.speed_prediction.common.time_aware_velocity_data import TAQ_SCHEMA_VERSION, CONTINUOUS_FEATURE_DIM; print(TAQ_SCHEMA_VERSION, CONTINUOUS_FEATURE_DIM)"
+python -m pytest -q isaaclab/test11/speed_prediction/tests
 ```
-
-应输出 `taq_velocity_v2 24`。权重加载和在线联调见[上级说明](../README.md#测试)。

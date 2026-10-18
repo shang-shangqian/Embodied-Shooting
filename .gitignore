@@ -16,3 +16,5 @@ checkpoints/
 *.pth.tar
 *.pt
 *.zip
+*.taqstream
+/data/

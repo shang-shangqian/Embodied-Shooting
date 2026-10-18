@@ -8,7 +8,7 @@
 | 目录 | 对应模块 |
 | --- | --- |
 | [isaaclab/test_lk_ostrack/](isaaclab/test_lk_ostrack/README.md) | 多目标视觉跟踪、仿真数据采集和离线评估；含模型资产、后坐力和测试子目录。 |
-| [isaaclab/test11/speed_prediction/](isaaclab/test11/speed_prediction/README.md) | 普通 GRU、TAQ-GRU 速度模型及在线推理；本分支不含独立训练脚本。 |
+| [isaaclab/test11/speed_prediction/](isaaclab/test11/speed_prediction/README.md) | 速度数据采集、普通 GRU/TAQ-GRU 训练、独立测试及在线推理。 |
 | [isaaclab/integrated_shooting_chain/](isaaclab/integrated_shooting_chain/README.md) | 连接视觉、测距、速度和决策，处理多目标调度、诊断及录像。 |
 | [isaaclab/test7_2_weight/](isaaclab/test7_2_weight/README.md) | 炮塔决策网络、PPO 训练、GT/完整感知评估和 SS 多目标清场。 |
 | `pyproject.toml` | Python 依赖、模块安装和命令行入口。 |
@@ -33,4 +33,4 @@
 - [视觉演示、序列推理、采集与评估](isaaclab/test_lk_ostrack/README.md#运行命令)
 - [决策网络训练与评估](isaaclab/test7_2_weight/README.md#训练)
 - [完整感知链测试、SS 清场与录像](isaaclab/integrated_shooting_chain/README.md#训练与测试)
-- [速度模型加载和后端选择](isaaclab/test11/speed_prediction/README.md#测试)
+- [速度采集、训练和独立测试](isaaclab/test11/speed_prediction/README.md#测试)
