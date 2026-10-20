@@ -24,6 +24,19 @@
 GT 为默认模式，评估默认 mixed；可增加 `--case ss`、`sd`、`ds`、`dd` 选择场景。
 训练输出为 `runs/test7_2_weight/`；恢复训练增加 `--checkpoint /path/to/run_or_checkpoint`。
 
-`--training_mode full_chain`、`--full_chain_perception`、`--static_salvo` 及全流程录像需要
-此次未发布的 `integrated_shooting_chain`。保留原源码中的调用，不复制该目录或裁剪这些功能代码。
+`--training_mode full_chain`、`--full_chain_perception`、`--static_salvo` 及全流程录像使用
+已发布的相邻目录 [integrated_shooting_chain](../integrated_shooting_chain/README.md)。
+权重、采集数据、实验布局文件和录像需自行准备或生成。
 本次不加入本地该目录没有的 `vision_model1.py` 或 `__init__.py`。
+
+## SS 连续清场
+
+`--case ss --static_salvo --salvo_targets 100` 使用 100 个静止目标，预热后只提供一帧全部目标的 GT 框初始化视觉跟踪。
+每次切换在本轮尚未尝试的可用目标中，按最新视觉估计距离动态选择最近目标；失败目标进入下一轮重试池。
+本轮其他可用目标处理完后才重试，不固定首次排序，也不会在暂缓期结束后立即选回本轮失败目标。
+
+默认 `--salvo_switch_policy both --salvo_miss_limit 5 --salvo_stall_timeout_s 3`，
+连续五枪未命中或单次尝试满 3 个仿真秒未命中即切出，命中优先。保持至少 1 秒暂缓、最多 3 次尝试。
+D 组默认清空切换后的 Actor GRU，并等待感知与速度就绪；等待期间保持控制目标角并禁火。
+报告的 `selection=dynamic_nearest_per_round_deferred_retries`、`selection_round`、
+`round_pending_target_ids` 与 `next_round_target_ids` 用于核对轮次及重试顺序。

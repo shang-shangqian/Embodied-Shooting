@@ -10,6 +10,7 @@ logs/
 runs/
 train_logs/
 isaaclab/integrated_shooting_chain/video/
+/source/standalone/integrated_shooting_chain/video/
 *.mp4
 checkpoints/
 *.pth

@@ -1262,7 +1262,7 @@ def main():
               f"reset_actor_on_switch={ablation.config.reset_actor_on_switch} "
               f"wait_for_velocity={ablation.config.pause_actor_when_unready} seed={args.salvo_seed}")
         print("[salvo] SS pool: one GT-box frame for all targets, then continuous multi-target RGB tracking.")
-        print("[salvo] Initial nearest-first FIFO queue; deferred targets move to the tail. Bounded retries without GT rebootstrap. Other-target raycast occlusion is not modeled.")
+        print("[salvo] Select nearest visual target within the current round; failures wait for the next round. Bounded retries without GT rebootstrap. Other-target raycast occlusion is not modeled.")
         print(f"[salvo] switch_policy={args.salvo_switch_policy} miss_limit={args.salvo_miss_limit} "
               f"stall_timeout_s={base_env._static_salvo.engagement_config['stall_timeout_s']}")
 
@@ -1566,7 +1566,7 @@ def main():
                 "fire_cooldown_steps": int(env_cfg.fire_cooldown_steps),
                 "configured_max_firing_hz": 1.0 / ((int(env_cfg.fire_cooldown_steps) + 1) * base_env.step_dt),
                 "full_chain_perception": full_chain,
-                "selection": "initial_nearest_fifo_requeue",
+                "selection": "dynamic_nearest_per_round_deferred_retries",
                 "switch_policy": args.salvo_switch_policy,
                 "miss_limit": args.salvo_miss_limit,
                 "stall_timeout_s": base_env._static_salvo.engagement_config["stall_timeout_s"],

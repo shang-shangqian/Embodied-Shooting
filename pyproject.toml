@@ -19,9 +19,10 @@ dev = ["pytest>=7,<10"]
 [tool.setuptools.packages.find]
 where = ["source/standalone"]
 namespaces = true
-include = ["test_lk_ostrack", "test7_2_weight", "test11", "test11.speed_prediction", "test11.speed_prediction.common", "test11.speed_prediction.legacy_gru", "test11.speed_prediction.taq_gru", "test11.speed_prediction.data_tools"]
+include = ["test_lk_ostrack", "test7_2_weight", "test11", "test11.speed_prediction", "test11.speed_prediction.common", "test11.speed_prediction.legacy_gru", "test11.speed_prediction.taq_gru", "test11.speed_prediction.data_tools", "integrated_shooting_chain", "integrated_shooting_chain.tools"]
 
 [tool.setuptools.package-data]
+integrated_shooting_chain = ["*.md"]
 test7_2_weight = ["*.usd", "*.urdf", "*.md", "lite3/**/*.usd", "turret/**/*.usd"]
 test11 = ["*.usd", "*.urdf", "*.md", "lite3/**/*.usd", "turret/**/*.usd"]
 test_lk_ostrack = ["*.usd", "*.urdf", "*.md", "lite3/**/*.usd", "turret/**/*.usd", "ostrack/OSTrack-main/LICENSE", "ostrack/OSTrack-main/README.md", "ostrack/OSTrack-main/lib/**/*.py", "ostrack/OSTrack-main/experiments/ostrack/*.yaml"]
