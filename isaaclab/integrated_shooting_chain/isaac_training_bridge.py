@@ -142,6 +142,9 @@ class IsaacFullChainPerceptionBridge:
             max_history_steps=config.max_history_steps,
         )
         self._trackers: list[Any | None] = [None] * self.num_envs
+        # Owned by this bridge/device, never by a process-wide cache. All envs
+        # share only the frozen network; each tracker owns its temporal state.
+        self._ostrack_network: Any | None = None
         # GT is permitted only for the one-time episode bootstrap. Once that
         # bootstrap has been consumed, tracker loss cannot silently reacquire
         # the target from privileged state; recovery requires a new episode or
@@ -186,8 +189,10 @@ class IsaacFullChainPerceptionBridge:
                 checkpoint=Path(self.config.ostrack_checkpoint).expanduser().resolve(),
                 config=self.config.ostrack_config,
                 device=str(self.config.device),
+                shared_network=self._ostrack_network,
             )
             fine_tracker.prepare()
+            self._ostrack_network = fine_tracker.network
         tracker_config = MultiTargetConfig(
             target_width_m=2.0 * float(self.config.target_radius_m),
             target_height_m=2.0 * float(self.config.target_radius_m),

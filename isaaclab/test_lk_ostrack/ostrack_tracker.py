@@ -154,11 +154,13 @@ class OSTrackBoxTracker:
         params.debug = self.debug
         return params
 
-    def _build_tracker(self):
+    def _build_tracker(self, *, shared_network=None):
         params = self._build_params()
         from lib.test.tracker.ostrack import get_tracker_class
 
         tracker_class = get_tracker_class()
+        if shared_network is not None:
+            return tracker_class(params, self.dataset_name, network=shared_network)
         return tracker_class(params, self.dataset_name)
 
     def track(
@@ -217,7 +219,7 @@ class OSTrackBoxTracker:
 
 
 class OSTrackFrameTracker:
-    """Stateful per-frame OSTrack adapter used by the multi-target scheduler."""
+    """Independent tracking state with optional shared, frozen network weights."""
 
     def __init__(
         self,
@@ -227,6 +229,8 @@ class OSTrackFrameTracker:
         device: str = "cuda:0",
         dataset_name: str = "custom",
         debug: int = 0,
+        *,
+        shared_network=None,
     ) -> None:
         self.adapter = OSTrackBoxTracker(
             repo_path=repo_path,
@@ -238,11 +242,24 @@ class OSTrackFrameTracker:
         )
         self._tracker = None
         self._initialized = False
+        self._shared_network = shared_network
 
     def prepare(self) -> None:
         """Load the network and checkpoint before real-time timing starts."""
         if self._tracker is None:
-            self._tracker = self._call_in_repo(self.adapter._build_tracker)
+            if self._shared_network is None:
+                self._tracker = self._call_in_repo(self.adapter._build_tracker)
+            else:
+                self._tracker = self._call_in_repo(
+                    lambda: self.adapter._build_tracker(shared_network=self._shared_network)
+                )
+
+    @property
+    def network(self):
+        """The prepared inference network; templates and boxes remain tracker-local."""
+        if self._tracker is None:
+            raise RuntimeError("Call prepare() before accessing the OSTrack network")
+        return self._tracker.network
 
     def _call_in_repo(self, fn):
         old_cwd = Path.cwd()

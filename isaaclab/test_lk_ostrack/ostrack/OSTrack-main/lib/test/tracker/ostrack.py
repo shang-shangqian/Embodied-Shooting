@@ -17,13 +17,18 @@ from lib.utils.ce_utils import generate_mask_cond
 
 
 class OSTrack(BaseTracker):
-    def __init__(self, params, dataset_name):
+    def __init__(self, params, dataset_name, *, network=None):
         super(OSTrack, self).__init__(params)
-        network = build_ostrack(params.cfg, training=False)
-        network.load_state_dict(torch.load(self.params.checkpoint, map_location='cpu')['net'], strict=True)
+        # Build/load only for the first environment. Other trackers retain their
+        # own templates, masks and boxes while using the same inference module.
+        if network is None:
+            network = build_ostrack(params.cfg, training=False)
+            network.load_state_dict(torch.load(self.params.checkpoint, map_location='cpu')['net'], strict=True)
+            network = network.cuda()
         self.cfg = params.cfg
-        self.network = network.cuda()
+        self.network = network
         self.network.eval()
+        self.network.requires_grad_(False)
         self.preprocessor = Preprocessor()
         self.state = None
 

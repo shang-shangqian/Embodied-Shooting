@@ -42,6 +42,10 @@ class StaticSalvoState:
         fire = fire.bool() & self.ready
         hit = hit.bool() & fire & (self.active >= 0)
         self.last_hit.copy_(hit)
+        schedulers = getattr(self, "engagement_schedulers", None)
+        if schedulers is not None:
+            for env_id in (fire & (self.active >= 0)).nonzero(as_tuple=False).flatten().tolist():
+                schedulers[env_id].record_shot(int(self.active[env_id]), hit=bool(hit[env_id]))
         self.steps += self.ready.long()
         self.shots += fire.long()
         self.first_shot = torch.where(fire & (self.first_shot < 0), self.steps, self.first_shot)
@@ -87,6 +91,7 @@ class StaticSalvoState:
 
 
 def install_static_salvo(base_env, *, target_count=100, stall_timeout_s=3.0, retry_delay_s=1.0, max_attempts=3,
+                         miss_limit=5, switch_policy="both",
                          layout_in=None, layout_out=None):
     """Install after the mixed-case hooks and before a perception bridge.
 
@@ -98,7 +103,7 @@ def install_static_salvo(base_env, *, target_count=100, stall_timeout_s=3.0, ret
     state = StaticSalvoState(base_env.num_envs, target_count, base_env.device, base_env.step_dt)
     base_env._static_salvo = state
     state.engagement_config = dict(stall_timeout_s=stall_timeout_s, retry_delay_s=retry_delay_s,
-                                   max_attempts=max_attempts)
+                                   max_attempts=max_attempts, miss_limit=miss_limit, switch_policy=switch_policy)
     original_reset = base_env._reset_idx
     original_observations = base_env._get_observations
     original_dones = base_env._get_dones

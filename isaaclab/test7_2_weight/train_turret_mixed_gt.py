@@ -487,7 +487,7 @@ def main():
         )
     if full_chain and args.fine_tracking and args.num_envs > 2:
         print(
-            f"[train-mixed][full_chain] OSTrack enabled for {args.num_envs} envs with one model per env. "
+            f"[train-mixed][full_chain] OSTrack enabled for {args.num_envs} envs with one shared network and independent tracking state. "
             "There is no hard environment limit; reduce --num_envs if GPU memory runs out."
         )
 

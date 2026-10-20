@@ -1013,7 +1013,11 @@ def main():
     parser.add_argument("--salvo_timeout_s", type=float, default=600.0, help="Whole-pool simulation timeout including warmup.")
     parser.add_argument("--salvo_fire_cooldown_steps", type=int, default=None, help="Override the existing firing cooldown for a rate experiment.")
     parser.add_argument("--salvo_report", type=str, default=None, help="JSON result path; default is outputs/static_salvo/<timestamp>.json.")
-    parser.add_argument("--salvo_stall_timeout_s", type=float, default=3.0, help="Defer a selected target after this many simulation seconds without a hit.")
+    parser.add_argument("--salvo_switch_policy", choices=("both", "misses", "timeout"), default="both",
+                        help="Default both: switch on five misses OR the attempt timeout. misses/timeout enable only one trigger.")
+    parser.add_argument("--salvo_miss_limit", type=int, default=5,
+                        help="Consecutive actual missed shots per attempt before switching; idle/cooldown steps do not count.")
+    parser.add_argument("--salvo_stall_timeout_s", type=float, default=3.0, help="Attempt timeout in simulation seconds, used by both/timeout policies.")
     parser.add_argument("--salvo_retry_delay_s", type=float, default=1.0, help="Simulation seconds before a deferred target can be selected again.")
     parser.add_argument("--salvo_max_attempts", type=int, default=3, help="Maximum engagement attempts per target, including the first.")
     parser.add_argument("--salvo_diagnostics", type=str, default=None, help="Per-step firing diagnostic CSV; defaults beside the salvo report.")
@@ -1065,9 +1069,13 @@ def main():
         if args.salvo_fire_cooldown_steps is not None and args.salvo_fire_cooldown_steps < 0:
             raise ValueError("salvo_fire_cooldown_steps must be nonnegative.")
         if any(not math.isfinite(v) or v <= 0 for v in (
-            args.salvo_stall_timeout_s, args.salvo_retry_delay_s, args.salvo_log_interval_s
-        )) or args.salvo_max_attempts < 1:
-            raise ValueError("Salvo stall/retry/log intervals and max_attempts must be positive.")
+            args.salvo_retry_delay_s, args.salvo_log_interval_s
+        )) or args.salvo_max_attempts < 1 or args.salvo_miss_limit < 1:
+            raise ValueError("Salvo retry/log intervals, max_attempts and miss_limit must be positive.")
+        if args.salvo_switch_policy in ("both", "timeout") and (
+            not math.isfinite(args.salvo_stall_timeout_s) or args.salvo_stall_timeout_s <= 0
+        ):
+            raise ValueError("Salvo stall timeout must be finite and positive in both/timeout modes.")
 
     # Existing evaluation stays GT-only by default. Full-chain mode turns on
     # the rendered camera and installs the LK/OSTrack + velocity bridge below.
@@ -1085,7 +1093,7 @@ def main():
         raise ValueError("Full-chain velocity eval supports --case ss or --case sd only.")
     if full_chain and args.fine_tracking and args.num_envs > 2:
         print(
-            f"[eval][full_chain] OSTrack enabled for {args.num_envs} envs with one model per env. "
+            f"[eval][full_chain] OSTrack enabled for {args.num_envs} envs with one shared network and independent tracking state. "
             "There is no hard environment limit; reduce --num_envs if GPU memory runs out."
         )
     if full_chain:
@@ -1238,9 +1246,11 @@ def main():
         from integrated_shooting_chain.salvo_ablation import install_salvo_ablation
 
         install_static_salvo(base_env, target_count=args.salvo_targets,
-                             stall_timeout_s=args.salvo_stall_timeout_s,
+                             stall_timeout_s=(args.salvo_stall_timeout_s if args.salvo_switch_policy != "misses" else None),
                              retry_delay_s=args.salvo_retry_delay_s,
                              max_attempts=args.salvo_max_attempts,
+                             miss_limit=args.salvo_miss_limit,
+                             switch_policy=args.salvo_switch_policy,
                              layout_in=args.salvo_layout_in, layout_out=args.salvo_layout_out)
         ablation = install_salvo_ablation(base_env, args.salvo_ablation,
                                          wait_for_velocity=args.salvo_wait_for_velocity)
@@ -1248,7 +1258,9 @@ def main():
               f"reset_actor_on_switch={ablation.config.reset_actor_on_switch} "
               f"wait_for_velocity={ablation.config.pause_actor_when_unready} seed={args.salvo_seed}")
         print("[salvo] SS pool: one GT-box frame for all targets, then continuous multi-target RGB tracking.")
-        print("[salvo] Select nearest eligible track; bounded deferral/retries without GT rebootstrap. Other-target raycast occlusion is not modeled.")
+        print("[salvo] Initial nearest-first FIFO queue; deferred targets move to the tail. Bounded retries without GT rebootstrap. Other-target raycast occlusion is not modeled.")
+        print(f"[salvo] switch_policy={args.salvo_switch_policy} miss_limit={args.salvo_miss_limit} "
+              f"stall_timeout_s={base_env._static_salvo.engagement_config['stall_timeout_s']}")
 
     if full_chain:
         standalone_dir = Path(__file__).resolve().parents[1]
@@ -1550,8 +1562,10 @@ def main():
                 "fire_cooldown_steps": int(env_cfg.fire_cooldown_steps),
                 "configured_max_firing_hz": 1.0 / ((int(env_cfg.fire_cooldown_steps) + 1) * base_env.step_dt),
                 "full_chain_perception": full_chain,
-                "selection": "nearest_eligible_visual_track_with_bounded_retries",
-                "stall_timeout_s": args.salvo_stall_timeout_s,
+                "selection": "initial_nearest_fifo_requeue",
+                "switch_policy": args.salvo_switch_policy,
+                "miss_limit": args.salvo_miss_limit,
+                "stall_timeout_s": base_env._static_salvo.engagement_config["stall_timeout_s"],
                 "retry_delay_s": args.salvo_retry_delay_s,
                 "max_attempts": args.salvo_max_attempts,
                 "diagnostics_csv": str(diagnostics.path.resolve()),

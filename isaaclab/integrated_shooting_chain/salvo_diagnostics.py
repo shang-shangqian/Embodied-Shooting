@@ -45,7 +45,7 @@ def firing_block_reason(*, target_id, warmup, ready, cooldown, intent, threshold
 
 
 class SalvoDiagnostics:
-    schema_version = 3
+    schema_version = 4
     fields = (
         "env_id", "step", "sim_s", "wall_s", "target_id", "attempt", "shots", "hits", "remaining",
         "action_fire", "fire_intent", "fire_threshold", "intent_confirmed", "pred_ready",
@@ -67,6 +67,7 @@ class SalvoDiagnostics:
         "ablation_group", "hold_applied", "actor_gru_reset", "actor_gru_reset_count",
         "yaw_delta_before_hold_rad", "pitch_delta_before_hold_rad",
         "velocity_ready", "actor_inference_skipped", "actor_wait_step_count",
+        "attempt_shots", "consecutive_misses",
     ) + tuple(f"{phase}_{name}" for phase in ("decision", "post") for name in SNAPSHOT_FIELDS)
 
     def __init__(self, path, *, log_interval_s=10.0):
@@ -189,6 +190,8 @@ class SalvoDiagnostics:
             row.update(env_id=i, step=int(env.episode_length_buf[i]),
                        sim_s=int(env.episode_length_buf[i]) * env.step_dt, wall_s=wall,
                        attempt=scheduler.attempts.get(row["target_id"], 0),
+                       attempt_shots=scheduler.attempt_shots,
+                       consecutive_misses=scheduler.consecutive_misses,
                        shots=int(pool.shots[i]), hits=int(pool.hits[i]),
                        remaining=pool.positions.shape[1]-int(pool.hits[i]), hit=bool(pool.last_hit[i]),
                        pred_distance_m=float(env._rl_pred_distance[i]),

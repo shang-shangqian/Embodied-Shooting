@@ -2,7 +2,8 @@
 
 `--static_salvo` 自动生成逐步 CSV；版本 2 增加“预测方向 → 决策动作 → 关节执行 → 枪口方向”
 的完整记录。无需开启 `--debug_diagnostics`，也不受前 50 步调试打印限制。
-当前版本 3 还记录速度链就绪状态和 Actor 等待期间是否跳过推理。
+版本 3 增加速度链就绪状态和 Actor 等待期间是否跳过推理；当前版本 4 增加本次尝试的
+实际射击数与连续未命中枪数。
 默认与 JSON 报告同目录、同名，扩展名为 `.steps.csv`；用
 `--salvo_diagnostics <新CSV路径>` 指定其他位置。已有文件不会被覆盖。
 
@@ -66,6 +67,7 @@ CSV 写出不会推进物理、调用渲染、重新跟踪或测距。弹道字�
 | `velocity_ready` | 决策时速度桥是否达到有效测距、观测次数和历史跨度要求 |
 | `actor_inference_skipped` | 本帧是否等待感知就绪而未调用策略网络；动作是保持/禁火占位 |
 | `actor_wait_step_count` | 本局该环境累计跳过策略推理的控制步数 |
+| `attempt_shots` / `consecutive_misses` | 本次尝试已评分的实际射击数 / 连续未命中数；在该步评分后、下一次调度前采样 |
 
 `actor_observation` 的布局为：位置方向 0–2、速度 3–5、距离 6、yaw/pitch 误差 7–8、
 机器人分支 9–27。这是环境 sanitize/clip 后、RL-Games 预处理及网络内部运行统计归一化前的
@@ -87,13 +89,29 @@ yaw 差值折返到 [-π,π]；位置控制目标角差保留原值。
 诊断记录本身不改变动作、循环状态、开火奖励或阈值；控制保持和 Actor 状态清空由下述
 射击流程配置决定。
 
-JSON 报告记录 `diagnostics_schema_version=3`、采样协议，以及决策模型、速度模型、
+JSON 报告记录 `diagnostics_schema_version=4`、采样协议，以及决策模型、速度模型、
 OSTrack 权重的实际路径和随机种子配置。`control_diagnostics_config` 记录枪口连杆/forward 轴/
 偏移、yaw/pitch 最大动作增量及误差观测缩放/裁剪参数，方便核对控制约定。
 旧报告没有这些字段，不能依赖当前默认模型来复现。
 需要复现旧问题时保留 100 目标、明确指定原决策与速度权重，先将时限缩为 30 个仿真秒。
 
 ## A/B/C/D 对照实验
+
+常规 `--static_salvo` 默认以 `--salvo_switch_policy both --salvo_miss_limit 5
+--salvo_stall_timeout_s 3` 调度。
+只累计当前目标实际触发且已评分的未命中射击；连续五枪均未命中后，下一次感知调度
+选择其他可尝试目标；同时保留单次尝试 3 秒无命中的退出条件，两者先触发者生效。
+3 秒从每次选中开始，包含感知等待、瞄准、冷却；射击不重置时钟，边界上命中优先。
+等待、冷却、低开火意图不消耗枪数，但仍消耗尝试时间，因此一直不开火时也能退出。
+跟踪丢失和整局时限仍生效。暂缓 1 秒和最多 3 次尝试保持，每次重选计数及计时归零。
+目标首次按视觉估计距离从近到远排队，随后按队列顺序选择。未命中而切出的目标追加到队尾，
+即使 1 秒暂缓期结束且距离更近，也不会越过队列前方仍可尝试的目标。
+击毁或次数耗尽的目标移出队列，跟踪不可用和冷却中的目标暂时跳过；新可用 ID 追加队尾。
+报告 `selection=initial_nearest_fifo_requeue` 标记此策略，单局 `pending_target_ids` 保存待处理顺序（不含当前目标）。
+JSON 的 `switch_policy` / `miss_limit` 标注规则；事件 reason 为 `consecutive_misses`，
+记录触发时的 `attempt_shots` / `consecutive_misses`。旧 `--salvo_stall_timeout_s 3` 参数
+在 misses 模式下不参与判定。`both` 同时启用两项，`timeout` 只用旧时限，`misses` 只用枪数。
+旧命令显式选择了 misses 时需改为 both，不能只添加 stall_timeout 参数。
 
 `--static_salvo` 未指定 `--salvo_ablation` 时默认采用 D 流程；普通单目标评估保持原逻辑。
 D 默认同时启用 `--salvo_wait_for_velocity`：目标切换后清空 Actor 状态，等待新目标的
@@ -124,7 +142,8 @@ B/D 保留网络提出的原动作，但撤销未就绪步的控制目标角增�
 不匹配时拒绝运行。布局只用于仿真场景生成，不给视觉增加 GT 初始化。
 
 从已设置 Isaac 环境的终端顺序运行四组（默认不录像、每组 30 个仿真秒）：
-该四组脚本显式关闭等待速度后推理，保持原 A/B/C/D 的两因素定义；常规测试入口默认启用新 D 流程。
+该四组脚本显式采用旧 3 秒切换规则并关闭等待速度后推理，保持原 A/B/C/D 的两因素定义；
+常规测试入口默认启用新 D 与五枪未命中切换流程。
 
 ```bash
 cd /home/jby/IsaacLab-2.3.2
