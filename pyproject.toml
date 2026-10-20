@@ -5,8 +5,8 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "embodied-shooting-lk-ostrack"
 version = "0.1.0"
-description = "Multi-target LK tracking, selected-target OSTrack, and Isaac Lab data collection"
-readme = "isaaclab/test_lk_ostrack/README.md"
+description = "Selected original LK/OSTrack, turret decision and velocity source modules"
+readme = "README.md"
 requires-python = ">=3.10,<3.12"
 dependencies = ["numpy==1.26.4", "opencv-python-headless==4.10.0.84", "Pillow>=10,<12"]
 
@@ -16,27 +16,15 @@ decision = ["rl-games==1.6.1", "imageio>=2.31,<3", "imageio-ffmpeg>=0.4,<0.7"]
 ostrack = ["torch>=2.2,<2.8", "torchvision>=0.17,<0.23", "timm==1.0.27", "easydict==1.13", "PyYAML>=6,<7"]
 dev = ["pytest>=7,<10"]
 
-[project.scripts]
-lk-ostrack-demo = "test_lk_ostrack.demo:main"
-lk-ostrack-estimate = "test_lk_ostrack.estimate_video:main"
-lk-ostrack-evaluate = "test_lk_ostrack.evaluate_multi_target_dataset:main"
-lk-ostrack-collect = "test_lk_ostrack.collect_multi_target_dataset:main"
-lk-ostrack-check = "test_lk_ostrack.check_multi_target_dataset:main"
-
-[tool.setuptools]
-package-dir = {"" = "isaaclab"}
-packages = ["test_lk_ostrack", "test_lk_ostrack.recoil", "test7_2_weight", "integrated_shooting_chain", "test11", "test11.speed_prediction", "test11.speed_prediction.common", "test11.speed_prediction.legacy_gru", "test11.speed_prediction.taq_gru", "test11.speed_prediction.data_tools", "test11.speed_prediction.data_collection"]
+[tool.setuptools.packages.find]
+where = ["source/standalone"]
+namespaces = true
+include = ["test_lk_ostrack", "test7_2_weight", "test11", "test11.speed_prediction", "test11.speed_prediction.common", "test11.speed_prediction.legacy_gru", "test11.speed_prediction.taq_gru", "test11.speed_prediction.data_tools"]
 
 [tool.setuptools.package-data]
 test7_2_weight = ["*.usd", "*.urdf", "*.md", "lite3/**/*.usd", "turret/**/*.usd"]
-integrated_shooting_chain = ["*.md"]
-"test11.speed_prediction" = ["*.md"]
-"test11.speed_prediction.common" = ["*.md"]
-"test11.speed_prediction.legacy_gru" = ["*.md"]
-"test11.speed_prediction.taq_gru" = ["*.md"]
-"test11.speed_prediction.data_tools" = ["*.md"]
-"test11.speed_prediction.data_collection" = ["*.md"]
-test_lk_ostrack = ["*.usd", "*.urdf", "*.md", "*.txt", "lite3/**/*.usd", "turret/**/*.usd", "ostrack/OSTrack-main/LICENSE", "ostrack/OSTrack-main/README.md", "ostrack/OSTrack-main/lib/**/*.py", "ostrack/OSTrack-main/experiments/ostrack/*.yaml"]
+test11 = ["*.usd", "*.urdf", "*.md", "lite3/**/*.usd", "turret/**/*.usd"]
+test_lk_ostrack = ["*.usd", "*.urdf", "*.md", "lite3/**/*.usd", "turret/**/*.usd", "ostrack/OSTrack-main/LICENSE", "ostrack/OSTrack-main/README.md", "ostrack/OSTrack-main/lib/**/*.py", "ostrack/OSTrack-main/experiments/ostrack/*.yaml"]
 
 [tool.pytest.ini_options]
-testpaths = ["isaaclab/test_lk_ostrack/tests"]
+testpaths = ["source/standalone/test_lk_ostrack/tests"]

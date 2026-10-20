@@ -1,36 +1,33 @@
-# LK + OSTrack 感知与炮塔决策
+# LK/OSTrack、炮塔决策与速度估计
 
-`lk-ostrack-standalone` 分支包含视觉跟踪、速度估计、感知控制链和炮塔决策代码。
-整体流程：RGB 图像 → LK/OSTrack 跟踪 → 方向与测距融合 → GRU 速度估计 → PPO 决策 → 瞄准与开火。
+`lk-ostrack-standalone` 当前只发布下列三个本地目录中的必要代码、测试及运行所需模型资产。
+仓库路径与本地路径一致，已登记的代码文件按原内容复制，不改变算法、物理参数或导入路径。
 
-## 目录说明
-
-| 目录 | 对应模块 |
+| 目录 | 作用 |
 | --- | --- |
-| [isaaclab/test_lk_ostrack/](isaaclab/test_lk_ostrack/README.md) | 多目标视觉跟踪、仿真数据采集和离线评估；含模型资产、后坐力和测试子目录。 |
-| [isaaclab/test11/speed_prediction/](isaaclab/test11/speed_prediction/README.md) | 速度数据采集、普通 GRU/TAQ-GRU 训练、独立测试及在线推理。 |
-| [isaaclab/integrated_shooting_chain/](isaaclab/integrated_shooting_chain/README.md) | 连接视觉、测距、速度和决策，处理多目标调度、诊断及录像。 |
-| [isaaclab/test7_2_weight/](isaaclab/test7_2_weight/README.md) | 炮塔决策网络、PPO 训练、GT/完整感知评估和 SS 多目标清场。 |
-| `pyproject.toml` | Python 依赖、模块安装和命令行入口。 |
+| [source/standalone/test_lk_ostrack/](source/standalone/test_lk_ostrack/README.md) | LK/OSTrack 跟踪、图片序列推理、多目标采集和离线评估。 |
+| [source/standalone/test7_2_weight/](source/standalone/test7_2_weight/README.md) | PPO 决策网络、GT 训练/评估及原有感知调用接口。 |
+| [source/standalone/test11/](source/standalone/test11/README.md) | 速度数据采集环境、普通 GRU/TAQ 训练、测试及数据工具。 |
 
-`/path/to/...` 替换为实际路径。
+不包含 `integrated_shooting_chain`、`test4`、`model_with_recoil` 等其他实验目录，也不复制它们的文件到上述目录中。
+历史数据、权重、日志和输出不上传。第三方 OSTrack 仅保留这三个目录中已有的推理依赖子集及原许可证。
 
+## 环境与命令
 
-## 权重与数据
+命令均从本仓库根目录执行。已有数据的速度训练/评估使用 Python 3.10/3.11 和 PyTorch；
+仿真使用与原项目匹配的 Isaac Lab v2.3.2 / Isaac Sim 环境。
 
-本分支不附带模型权重、训练数据和历史输出。完整感知模式默认读取：
+```bash
+python -m pip install -e '.[velocity,dev]'
+export ISAACLAB_PATH=/absolute/path/to/IsaacLab-2.3.2
+```
 
-| 路径或参数 | 内容 |
-| --- | --- |
-| `--locomotion_policy /path/to/policy.pt` | 兼容 Lite3 观测和关节顺序的行走 TorchScript 策略。 |
-| `--checkpoint /path/to/run_or_checkpoint` | 决策 `.pth` 或包含 `nn/` 的训练目录。 |
-| `checkpoints/velocity/best_model.pt` | 默认的 13 维普通 GRU 速度权重。 |
-| `checkpoints/OSTrack_ep0300.pth.tar` | 与 `vitb_256_mae_ce_32x4_ep300` 配套的 OSTrack 权重。 |
+仿真/PPO 依赖使用 `.[decision,ostrack,dev]`。安装本仓库不会安装或修改 Isaac Lab SDK。
+行走策略、决策权重、速度权重和 OSTrack 权重需自行准备，原代码中的默认实验路径按实际情况覆盖。
 
+## 当前发布范围的限制
 
-## 常用入口
-
-- [视觉演示、序列推理、采集与评估](isaaclab/test_lk_ostrack/README.md#运行命令)
-- [决策网络训练与评估](isaaclab/test7_2_weight/README.md#训练)
-- [完整感知链测试、SS 清场与录像](isaaclab/integrated_shooting_chain/README.md#训练与测试)
-- [速度采集、训练和独立测试](isaaclab/test11/speed_prediction/README.md#测试)
+- GT 决策训练/评估的命令见决策模块 README。
+- 完整感知决策、SS 连续清场、诊断和全流程录像引用 `integrated_shooting_chain`，此次不包含该目录。
+- 旧 CNN 感知分支引用 `test4`；可选后坐力功能引用 `model_with_recoil`，此次也不包含。
+- 三个模块对 SDK、本地资产和环境配置的要求沿用原项目；本分支不是自带全部外部依赖的 SDK。

@@ -18,3 +18,7 @@ checkpoints/
 *.zip
 *.taqstream
 /data/
+
+/source/standalone/test11/data/
+/source/standalone/**/gru_runs*/
+/source/standalone/**/*episode_runs*/
