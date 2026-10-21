@@ -13,6 +13,8 @@ from target_follow_motion_gt import install_target_follow_motion
 from ppo_training_config import add_ppo_arguments, make_learning_rate_restore_agent, resolve_ppo_settings
 from yaw_control import checkpoint_contract, contracts_match, make_observation_contract_agent, observation_contract
 import types
+from dataclasses import asdict
+from turret_initialization import TurretInitConfig, resolve_training_cases
 
 
 TRAIN_DIR = Path("runs") / "test7_2_weight"
@@ -343,6 +345,15 @@ def main():
     parser.add_argument("--headless", action="store_true")
     parser.add_argument("--yaw_error_mode", choices=("joint_reachable", "wrapped_los"), default="wrapped_los",
                         help="Actor yaw input: wrapped LOS shortest turn (default), or optional bounded joint-goal displacement.")
+    parser.add_argument("--turret_init_mode", choices=("zero", "mixed"), default="mixed",
+                        help="Mixed zero/general/near-limit starts for SS/SD recovery finetuning; zero restores legacy resets.")
+    parser.add_argument("--turret_init_probabilities", type=float, nargs=3, default=(.4, .4, .2),
+                        metavar=("ZERO", "GENERAL", "LIMIT"), help="Reset group probabilities, summing to 1.")
+    parser.add_argument("--turret_init_general_yaw_deg", type=float, default=90.)
+    parser.add_argument("--turret_init_general_pitch_deg", type=float, default=20.)
+    parser.add_argument("--turret_init_limit_margin_deg", type=float, default=5.)
+    parser.add_argument("--turret_init_limit_yaw_band_deg", type=float, default=25.)
+    parser.add_argument("--turret_init_limit_pitch_band_deg", type=float, default=15.)
     parser.add_argument(
         "--training_mode",
         choices=("gt", "full_chain"),
@@ -432,10 +443,10 @@ def main():
     parser.add_argument("--target_speed_max", type=float, default=5.0, help="Maximum 3-D target speed magnitude (m/s).")
 
     # 4-case mix probabilities: [SS, SD, DS, DD]
-    parser.add_argument("--p_ss", type=float, default=0.3, help="P(robot static, target static)")
-    parser.add_argument("--p_sd", type=float, default=0.3, help="P(robot static, target dynamic)")
-    parser.add_argument("--p_ds", type=float, default=0.2, help="P(robot dynamic, target static)")
-    parser.add_argument("--p_dd", type=float, default=0.2, help="P(robot dynamic, target dynamic)")
+    parser.add_argument("--p_ss", type=float, default=None, help="SS weight; defaults to 0.4 for mixed-pose recovery training.")
+    parser.add_argument("--p_sd", type=float, default=None, help="SD weight; defaults to 0.6 for mixed-pose recovery training.")
+    parser.add_argument("--p_ds", type=float, default=None, help="DS weight; defaults to zero for mixed-pose recovery training.")
+    parser.add_argument("--p_dd", type=float, default=None, help="DD weight; defaults to zero for mixed-pose recovery training.")
     parser.add_argument("--dog_vx_min", type=float, default=-1.5)
     parser.add_argument("--dog_vx_max", type=float, default=1.5)
     parser.add_argument("--dog_vy_min", type=float, default=-0.8)
@@ -466,6 +477,13 @@ def main():
     ppo_settings = resolve_ppo_settings(args)
 
     full_chain = args.training_mode == "full_chain"
+    init_config = TurretInitConfig(
+        mode=args.turret_init_mode, probabilities=tuple(args.turret_init_probabilities),
+        general_yaw_deg=args.turret_init_general_yaw_deg,
+        general_pitch_deg=args.turret_init_general_pitch_deg,
+        limit_margin_deg=args.turret_init_limit_margin_deg,
+        limit_yaw_band_deg=args.turret_init_limit_yaw_band_deg,
+        limit_pitch_band_deg=args.turret_init_limit_pitch_band_deg)
 
     if args.max_epochs <= 0:
         raise ValueError("--max_epochs must be > 0")
@@ -473,16 +491,8 @@ def main():
         raise ValueError("--max_shots_per_episode must be >= 0")
     if args.num_envs <= 0:
         raise ValueError("--num_envs must be > 0")
-    default_case_mix = (0.3, 0.3, 0.2, 0.2)
-    requested_case_mix = (float(args.p_ss), float(args.p_sd), float(args.p_ds), float(args.p_dd))
-    if full_chain and requested_case_mix == default_case_mix:
-        args.p_ss, args.p_sd, args.p_ds, args.p_dd = 0.4, 0.6, 0.0, 0.0
-        print("[train-mixed][full_chain] default case mix changed to SS/SD = 0.4/0.6")
-    if full_chain and (float(args.p_ds) > 0.0 or float(args.p_dd) > 0.0):
-        raise ValueError(
-            "The current velocity checkpoints support only SS/SD "
-            "(static robot). Set --p_ds 0 --p_dd 0 and choose --p_ss/--p_sd."
-        )
+    case_mix = resolve_training_cases(args)
+    print(f"[train-mixed] SS/SD/DS/DD probabilities = {case_mix}")
     if full_chain and args.fine_tracking and args.num_envs > 2:
         print(
             f"[train-mixed][full_chain] OSTrack enabled for {args.num_envs} envs with one shared network and independent tracking state. "
@@ -551,6 +561,8 @@ def main():
         torch.cuda.set_device(local_rank if bool(args.distributed) else torch.device(launcher_device).index or 0)
 
     env_cfg = TurretAimEnvCfg()
+    env_cfg.turret_init_config = init_config
+    print(f"[turret-init] {asdict(init_config)}; hold sampled position commands during warmup", flush=True)
     env_cfg.yaw_error_mode = args.yaw_error_mode
     aim_contract = observation_contract(args.yaw_error_mode, env_cfg.aim_error_obs_scale, env_cfg.aim_error_obs_clip)
     print(f"[aim-contract] training observation = {aim_contract['version']}", flush=True)
@@ -880,7 +892,10 @@ def main():
         settings_path = TRAIN_DIR / experiment_name / "training_settings.json"
         settings_path.parent.mkdir(parents=True, exist_ok=True)
         settings_path.write_text(json.dumps({"arguments": vars(args), "ppo": ppo_settings,
-                                             "aim_observation_contract": aim_contract}, indent=2) + "\n")
+                                             "aim_observation_contract": aim_contract,
+                                             "turret_initialization": asdict(init_config),
+                                             "case_probabilities": dict(zip(("ss", "sd", "ds", "dd"), case_mix))},
+                                            indent=2) + "\n")
 
     config = {
         "params": {

@@ -32,8 +32,10 @@ from pxr import Gf, Usd, UsdGeom
 
 try:
     from .yaw_control import observation_contract, reachable_yaw_goal
+    from .turret_initialization import TurretInitConfig, sample_turret_initialization
 except ImportError:
     from yaw_control import observation_contract, reachable_yaw_goal
+    from turret_initialization import TurretInitConfig, sample_turret_initialization
 
 
 @configclass
@@ -219,6 +221,8 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     # --- control ---
     max_delta_yaw: float = 0.03      # 每个 env step 最大 yaw 增量，单位 rad
     max_delta_pitch: float = 0.02    # 每个 env step 最大 pitch 增量，单位 rad
+    # Evaluation remains at zero; the training entry opts into mixed recovery resets.
+    turret_init_config: TurretInitConfig = TurretInitConfig()
 
     # --- observation normalization ---
     # 瞄准误差单独用高增益尺度，不要和关节角共用 pi / pitch_limit。
@@ -450,6 +454,9 @@ class TurretAimEnv(DirectRLEnv):
         # buffers(动作,目标关节速度,目标点坐标,连续成功步数)
         self._actions = torch.zeros((self.num_envs, 3), device=self.device)
         self._turret_pos_targets = torch.zeros((self.num_envs, 2), device=self.device)
+        self._turret_reset_joint_pos = torch.zeros_like(self._turret_pos_targets)
+        self._turret_init_group = torch.zeros(self.num_envs, device=self.device, dtype=torch.long)
+        self._turret_init_limit_axes = torch.zeros_like(self._turret_init_group)
         self._prev_actions = torch.zeros((self.num_envs, 3), device=self.device)  # 保存上一时刻动作
         self._delta_pos = torch.zeros((self.num_envs, 2), device=self.device)     # 本步 yaw/pitch 位置增量
         self._fire_command = torch.zeros((self.num_envs,), device=self.device)
@@ -1167,6 +1174,9 @@ class TurretAimEnv(DirectRLEnv):
         # warm-up: disable aiming/firing before robot settles
         aiming_enabled = self._aim_warmup_left_steps <= 0
         aiming_scale = aiming_enabled.float()
+        if self.cfg.turret_init_config.mode == "mixed":
+            # Hold the sampled pose throughout standing warmup; do not return to zero.
+            self._turret_pos_targets[~aiming_enabled] = self._turret_reset_joint_pos[~aiming_enabled]
 
         # ----------------------------
         # 2. yaw/pitch 位置增量控制
@@ -3681,6 +3691,16 @@ class TurretAimEnv(DirectRLEnv):
         }
     
 
+    def _initialize_turret_joints(self, env_ids_t, joint_pos, joint_vel):
+        limits = self.turret.data.joint_pos_limits[env_ids_t][:, self._turret_dof_ids]
+        sample = sample_turret_initialization(limits, self.cfg.turret_init_config)
+        joint_pos[:, self._turret_dof_ids] = sample.positions
+        joint_vel[:, self._turret_dof_ids] = 0
+        self._turret_pos_targets[env_ids_t] = sample.positions
+        self._turret_reset_joint_pos[env_ids_t] = sample.positions
+        self._turret_init_group[env_ids_t] = sample.groups
+        self._turret_init_limit_axes[env_ids_t] = sample.limit_axes
+
     def _reset_idx(self, env_ids: Sequence[int] | torch.Tensor | None):
         # 注意：
         # runtime lidar 是全局创建的，不应因单个/部分 env reset 而整体清零初始化状态。
@@ -3756,6 +3776,19 @@ class TurretAimEnv(DirectRLEnv):
             "Fire/fire_min_dist_mean": fire_min_dist_mean,
             "Fire/fire_min_dist_min": fire_min_dist_min,
         }
+        completed = self.episode_length_buf[env_ids_t] > 0
+        if completed.any():
+            init_groups = self._turret_init_group[env_ids_t][completed]
+            initial_degrees = self._turret_reset_joint_pos[env_ids_t][completed].rad2deg()
+            self.extras["log"].update({
+                "TurretInit/mean_abs_yaw_deg": initial_degrees[:, 0].abs().mean(),
+                "TurretInit/mean_abs_pitch_deg": initial_degrees[:, 1].abs().mean(),
+            })
+            for group_id, name in enumerate(("zero", "general", "near_limit")):
+                mask = init_groups == group_id
+                self.extras["log"][f"TurretInit/{name}_fraction"] = mask.float().mean()
+                if mask.any():
+                    self.extras["log"][f"TurretInit/{name}_hit_rate"] = hit_flags[completed][mask].float().mean()
 
         self._hit_flag[env_ids_t] = False
         self._fire_cooldown[env_ids_t] = 0
@@ -3826,13 +3859,7 @@ class TurretAimEnv(DirectRLEnv):
 
         joint_pos = self.turret.data.default_joint_pos[env_ids_t].clone()
         joint_vel = self.turret.data.default_joint_vel[env_ids_t].clone()
-        joint_pos[:, int(self._yaw_dof_ids[0])] = 0.0
-        joint_pos[:, int(self._pitch_dof_ids[0])] = 0.0
-        joint_vel[:, int(self._yaw_dof_ids[0])] = 0.0
-        joint_vel[:, int(self._pitch_dof_ids[0])] = 0.0
-
-        self._turret_pos_targets[env_ids_t, 0] = joint_pos[:, int(self._yaw_dof_ids[0])]
-        self._turret_pos_targets[env_ids_t, 1] = joint_pos[:, int(self._pitch_dof_ids[0])]
+        self._initialize_turret_joints(env_ids_t, joint_pos, joint_vel)
         dof_ids = [int(self._yaw_dof_ids[0]), int(self._pitch_dof_ids[0])]
         env_ids_sim = cast(Sequence[int], env_ids_t)
         self.turret.set_joint_position_target(
