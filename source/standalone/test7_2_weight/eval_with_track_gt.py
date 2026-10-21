@@ -13,6 +13,7 @@ from typing import Any
 import  asym_central_value_gru_network_gt  # noqa: F401
 from isaaclab.app import AppLauncher
 from target_follow_motion_gt import install_target_follow_motion
+from yaw_control import checkpoint_contract, contracts_match, observation_contract
 import types
 
 from rl_perception_bridge_gt import install_rl_perception_bridge
@@ -1013,6 +1014,8 @@ def main():
                         help="Actual shots per single-target episode: 5 ends after the fifth shot; "
                              "a fifth-shot hit is success. The 10 s timeout remains; 0 disables the budget.")
     parser.add_argument("--static_salvo", action="store_true", help="SS continuous clearance of a fixed target pool; one episode is a complete pool.")
+    parser.add_argument("--yaw_error_mode", choices=("joint_reachable", "wrapped_los"), default="wrapped_los",
+                        help="Actor yaw input: wrapped LOS shortest turn (default), matching historical untagged checkpoints.")
     parser.add_argument("--salvo_targets", type=int, default=100)
     parser.add_argument("--salvo_timeout_s", type=float, default=600.0, help="Whole-pool simulation timeout including warmup.")
     parser.add_argument("--salvo_fire_cooldown_steps", type=int, default=None, help="Override the existing firing cooldown for a rate experiment.")
@@ -1029,6 +1032,13 @@ def main():
     parser.add_argument("--salvo_ablation", choices=list("ABCD"), default=None, help="Static salvo defaults to D: hold when unready and reset Actor GRU on target switch. A/B/C remain available for comparison.")
     parser.add_argument("--salvo_wait_for_velocity", action=argparse.BooleanOptionalAction, default=None,
                         help="Pause policy inference until the selected target's range/velocity chain is ready; defaults on for D. Disable to reproduce the original D experiment.")
+    parser.add_argument("--salvo_return_home", action=argparse.BooleanOptionalAction, default=False,
+                        help="Physically return yaw/pitch to zero before every target attempt; requires D and velocity waiting.")
+    parser.add_argument("--salvo_home_angle_tol_deg", type=float, default=.5)
+    parser.add_argument("--salvo_home_velocity_tol_rps", type=float, default=.05)
+    parser.add_argument("--salvo_home_settle_frames", type=int, default=5)
+    parser.add_argument("--salvo_home_timeout_s", type=float, default=8.,
+                        help="End the episode with return_home_timeout if physical homing cannot settle in time.")
     parser.add_argument("--salvo_seed", type=int, default=61, help="Explicit environment/RL-Games/OpenCV seed for SS evaluation.")
     layout_args = parser.add_mutually_exclusive_group()
     layout_args.add_argument("--salvo_layout_in", help="Load a saved env-local target layout.")
@@ -1055,6 +1065,13 @@ def main():
         raise ValueError("--max_shots_per_episode is for single-target episodes, not --static_salvo")
     if args.salvo_ablation is None:
         args.salvo_ablation = "D" if args.static_salvo else "A"
+    if args.salvo_return_home:
+        if not args.static_salvo or args.salvo_ablation != "D" or args.salvo_wait_for_velocity is False:
+            raise ValueError("--salvo_return_home requires --static_salvo, group D and velocity waiting")
+        if any(not math.isfinite(v) or v <= 0 for v in (
+            args.salvo_home_angle_tol_deg, args.salvo_home_velocity_tol_rps, args.salvo_home_timeout_s
+        )) or args.salvo_home_settle_frames < 1:
+            raise ValueError("Return-home tolerances, settle frames and timeout must be positive and finite")
     if not args.static_salvo and (args.salvo_ablation != "A" or args.salvo_wait_for_velocity is not None or args.salvo_layout_in or args.salvo_layout_out):
         raise ValueError("Salvo ablation and layout options require --static_salvo")
     if args.static_salvo:
@@ -1143,6 +1160,16 @@ def main():
         print("[eval] deterministic action = tanh(mu)")
 
     env_cfg = TurretAimEnvCfg()
+    env_cfg.yaw_error_mode = args.yaw_error_mode
+    aim_contract = observation_contract(args.yaw_error_mode, env_cfg.aim_error_obs_scale, env_cfg.aim_error_obs_clip)
+    source_aim_contract = checkpoint_contract(checkpoint_path)
+    aim_contract_matches = contracts_match(source_aim_contract, aim_contract)
+    print(f"[aim-contract] checkpoint={source_aim_contract['version']} evaluation={aim_contract['version']} "
+          f"matches={aim_contract_matches}", flush=True)
+    if not aim_contract_matches:
+        print("[aim-contract] WARNING: this checkpoint has not been adapted to the requested yaw input. "
+              "This run is a contract-mismatch diagnostic; finetune before interpreting it as the new policy, "
+              "or select --yaw_error_mode to match the checkpoint contract.", flush=True)
     env_cfg.max_shots_per_episode = args.max_shots_per_episode
     if not args.static_salvo:
         print(f"[eval] episode_length_s={env_cfg.episode_length_s} "
@@ -1256,6 +1283,14 @@ def main():
                              miss_limit=args.salvo_miss_limit,
                              switch_policy=args.salvo_switch_policy,
                              layout_in=args.salvo_layout_in, layout_out=args.salvo_layout_out)
+        if args.salvo_return_home:
+            from integrated_shooting_chain.salvo_return_home import SalvoReturnHomeConfig, install_salvo_return_home
+            install_salvo_return_home(base_env, SalvoReturnHomeConfig(
+                angle_tolerance_deg=args.salvo_home_angle_tol_deg,
+                velocity_tolerance_rps=args.salvo_home_velocity_tol_rps,
+                settle_frames=args.salvo_home_settle_frames, timeout_s=args.salvo_home_timeout_s))
+            print("[salvo] return-home enabled: rate-limited physical yaw/pitch -> 0 before each attempt; "
+                  "Actor paused, no fire; homing counts toward the episode but not the attempt deadline.")
         ablation = install_salvo_ablation(base_env, args.salvo_ablation,
                                          wait_for_velocity=args.salvo_wait_for_velocity)
         print(f"[salvo] ablation={args.salvo_ablation} hold_when_unready={ablation.config.hold_when_unready} "
@@ -1558,8 +1593,19 @@ def main():
                 "hold_when_unready": ablation.config.hold_when_unready,
                 "reset_actor_on_switch": ablation.config.reset_actor_on_switch,
                 "wait_for_velocity": ablation.config.pause_actor_when_unready,
-                "actor_wait_protocol": ("skip_inference_hold_command_no_fire_until_velocity_ready"
+                "actor_wait_protocol": ("return_home_then_skip_inference_until_velocity_ready" if args.salvo_return_home else
+                                        "skip_inference_hold_command_no_fire_until_velocity_ready"
                                         if ablation.config.pause_actor_when_unready else "inference_while_unready"),
+                "return_home_enabled": args.salvo_return_home,
+                "return_home_config": ({
+                    "target_joint_angles_rad": [0., 0.],
+                    "angle_tolerance_deg": args.salvo_home_angle_tol_deg,
+                    "velocity_tolerance_rps": args.salvo_home_velocity_tol_rps,
+                    "settle_frames": args.salvo_home_settle_frames,
+                    "timeout_s": args.salvo_home_timeout_s,
+                    "attempt_clock": "exclude_homing_only_keep_perception_wait_and_episode_clock",
+                    "actor_reset": "once_after_home_each_attempt_including_first",
+                } if args.salvo_return_home else None),
                 "layout_in": args.salvo_layout_in, "layout_out": args.salvo_layout_out,
                 "layout_sha256": getattr(base_env._static_salvo, "layout_sha256", None),
                 "step_dt_s": float(base_env.step_dt),
@@ -1576,6 +1622,9 @@ def main():
                 "diagnostics_schema_version": diagnostics.schema_version,
                 "diagnostics_sampling": "decision_before_pre_physics_and_post_after_rewards_before_reset",
                 "diagnostics_gt_usage": "evaluation_only_never_fed_to_tracker_or_actor",
+                "aim_observation_contract": aim_contract,
+                "checkpoint_aim_observation_contract": source_aim_contract,
+                "aim_observation_contract_matches_checkpoint": aim_contract_matches,
                 "decision_checkpoint": str(checkpoint_path.resolve()),
                 "velocity_checkpoint": str(Path(args.full_chain_velocity_checkpoint).expanduser().resolve()),
                 "velocity_backend": args.velocity_backend,

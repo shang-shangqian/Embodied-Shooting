@@ -113,6 +113,25 @@ def read_rows(path):
         return list(csv.DictReader(f))
 
 
+def test_joint_goal_fields_belong_to_captured_actor_observation(tmp_path):
+    env = make_control_env()
+    env._actor_yaw_goal_rad = torch.tensor([-.05])
+    env._actor_yaw_joint_error_rad = torch.tensor([-3.2])
+    env._actor_yaw_goal_reachable = torch.tensor([True])
+    diagnostics = SalvoDiagnostics(tmp_path / 'goal.csv')
+    install_salvo_diagnostics(env, diagnostics)
+    env._get_observations()
+    # A later environment update must not relabel the decision's input goal.
+    env._actor_yaw_goal_rad[:] = 1.
+    env._pre_physics_step(torch.zeros(1, 3))
+    env._get_rewards()
+    diagnostics.close()
+    row = read_rows(diagnostics.path)[0]
+    assert float(row['actor_yaw_goal_rad']) == pytest.approx(-.05)
+    assert float(row['actor_yaw_joint_error_rad']) == pytest.approx(-3.2)
+    assert row['actor_yaw_goal_reachable'] == 'True'
+
+
 def test_velocity_wait_logs_skipped_inference_and_hold_no_fire_action(tmp_path):
     from integrated_shooting_chain.salvo_ablation import install_salvo_ablation, install_actor_switch_reset
     env=make_control_env();env.device='cpu'
@@ -127,12 +146,39 @@ def test_velocity_wait_logs_skipped_inference_and_hold_no_fire_action(tmp_path):
     env._pre_physics_step(player.get_action(None))
     env._get_rewards();diagnostics.close()
     row=read_rows(diagnostics.path)[0]
-    assert diagnostics.schema_version==4
+    assert diagnostics.schema_version==6
     assert row['velocity_ready']=='False' and row['actor_inference_skipped']=='True'
     assert row['actor_wait_step_count']=='1' and row['hold_applied']=='True'
     assert float(row['action_fire'])==-1 and not float(row['yaw_command_change_rad'])
     assert not float(row['pitch_command_change_rad'])
     assert 'perception_not_ready' in row['blocked_reason']
+
+
+def test_physical_home_logs_control_authority_without_mislabeling_perception_failure(tmp_path):
+    from integrated_shooting_chain.salvo_ablation import install_salvo_ablation, install_actor_switch_reset
+    from integrated_shooting_chain.salvo_return_home import install_salvo_return_home
+    env = make_control_env()
+    env.device = 'cpu'
+    env.cfg.max_delta_yaw, env.cfg.max_delta_pitch = .03, .02
+    env._rl_bridge_velocity_ready = torch.tensor([True])
+    home = install_salvo_return_home(env)
+    experiment = install_salvo_ablation(env)
+    diagnostics = SalvoDiagnostics(tmp_path/'homing.csv')
+    install_salvo_diagnostics(env, diagnostics)
+    player = SimpleNamespace(states=[torch.ones(1, 1, 4), torch.ones(1, 1, 4)], has_batch_dimension=True,
+                             get_action=lambda obs: pytest.fail('policy must remain paused during home'))
+    install_actor_switch_reset(player, experiment)
+    env._get_observations()
+    env._pre_physics_step(player.get_action(None))
+    env._get_rewards()
+    diagnostics.close()
+    row = read_rows(diagnostics.path)[0]
+    assert row['return_home_active'] == 'True' and row['return_home_failed'] == 'False'
+    assert row['blocked_reason'] == 'return_home' and row['actor_inference_skipped'] == 'True'
+    assert row['return_home_step_count'] == '1' and row['velocity_ready'] == 'True'
+    assert float(row['attempt_excluded_sim_s']) == pytest.approx(.02)
+    assert float(row['action_fire']) == -1 and float(row['yaw_command_change_rad']) < 0
+    assert not home.failed.item()
 
 
 def test_hook_logs_pre_action_gates_post_physics_counts_and_target_zero(tmp_path):

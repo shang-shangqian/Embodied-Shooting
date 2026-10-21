@@ -45,7 +45,7 @@ def firing_block_reason(*, target_id, warmup, ready, cooldown, intent, threshold
 
 
 class SalvoDiagnostics:
-    schema_version = 4
+    schema_version = 6
     fields = (
         "env_id", "step", "sim_s", "wall_s", "target_id", "attempt", "shots", "hits", "remaining",
         "action_fire", "fire_intent", "fire_threshold", "intent_confirmed", "pred_ready",
@@ -68,6 +68,9 @@ class SalvoDiagnostics:
         "yaw_delta_before_hold_rad", "pitch_delta_before_hold_rad",
         "velocity_ready", "actor_inference_skipped", "actor_wait_step_count",
         "attempt_shots", "consecutive_misses",
+        "actor_yaw_goal_rad", "actor_yaw_joint_error_rad", "actor_yaw_goal_reachable",
+        "return_home_active", "return_home_failed", "return_home_settle_count",
+        "return_home_step_count", "attempt_excluded_sim_s",
     ) + tuple(f"{phase}_{name}" for phase in ("decision", "post") for name in SNAPSHOT_FIELDS)
 
     def __init__(self, path, *, log_interval_s=10.0):
@@ -94,6 +97,11 @@ class SalvoDiagnostics:
     def capture_observations(self, env, observations):
         """Copy the actual env policy output, after sanitize/clip, before RL-Games preprocessing."""
         policy = observations["policy"].detach().cpu().tolist()
+        joint_goal_fields = {}
+        for name in ("actor_yaw_goal_rad", "actor_yaw_joint_error_rad", "actor_yaw_goal_reachable"):
+            value = getattr(env, "_" + name, None)
+            if value is not None:
+                joint_goal_fields[name] = value.detach().cpu().tolist()
         for i, obs in enumerate(policy):
             self._actor_rows[i] = dict(
                 actor_obs_available=True, actor_obs_target_id=int(env._static_salvo.active[i]),
@@ -103,6 +111,7 @@ class SalvoDiagnostics:
                 actor_obs_training_ready=bool(env._rl_bridge_training_ready[i]),
                 actor_observation=json.dumps(obs, separators=(",", ":"), allow_nan=False),
                 actor_obs_distance=obs[6], actor_obs_yaw_error=obs[7], actor_obs_pitch_error=obs[8],
+                **{name: values[i] for name, values in joint_goal_fields.items()},
             )
 
     def before_action(self, env, actions):
@@ -150,6 +159,12 @@ class SalvoDiagnostics:
 
     def after_action(self, env):
         for i, row in enumerate(self._pending):
+            home = getattr(env._static_salvo, "return_home", None)
+            if home is not None:
+                row.update(return_home_active=bool(home.control_active[i]),
+                           return_home_failed=bool(home.failed[i]),
+                           return_home_settle_count=home.settled[i], return_home_step_count=home.steps[i],
+                           attempt_excluded_sim_s=env._static_salvo.engagement_schedulers[i].excluded_attempt_s)
             ablation = getattr(env._static_salvo, "ablation", None)
             if ablation is not None:
                 row.update(ablation_group=ablation.config.group, hold_applied=bool(ablation.hold_applied[i]),
@@ -215,6 +230,10 @@ class SalvoDiagnostics:
                 cooldown=row["cooldown_before"], intent=row["fire_intent"],
                 threshold=row["fire_threshold"], confirmed=row["intent_confirmed"], fired=row["fired"],
             )
+            if not row["fired"] and row.get("return_home_failed"):
+                row["blocked_reason"] = "return_home_timeout"
+            elif not row["fired"] and row.get("return_home_active"):
+                row["blocked_reason"] = "return_home"
             row = {k: "" if isinstance(v, float) and not math.isfinite(v) else v for k, v in row.items()}
             self._csv.writerow(row)
             if print_progress:

@@ -84,6 +84,8 @@ class StaticSalvoState:
             record.update(scheduler.summary())
         if hasattr(self, "ablation"):
             record["ablation"] = self.ablation.summary(env_id)
+        if hasattr(self, "return_home"):
+            record["return_home"] = self.return_home.summary(env_id)
         record["layout_sha256"] = getattr(self, "layout_sha256", None)
         self.records.append(record)
         self.finished[env_id] = True
@@ -235,7 +237,10 @@ def install_static_salvo(base_env, *, target_count=100, stall_timeout_s=3.0, ret
             terminated, truncated = original_dones()
         finally:
             self._compute_current_step_hit = original_hit
-        reasons = getattr(state, "unengageable_reasons", [None] * self.num_envs)
+        reasons = list(getattr(state, "unengageable_reasons", [None] * self.num_envs))
+        if hasattr(state, "return_home"):
+            for env_id in state.return_home.failed.nonzero(as_tuple=False).flatten().tolist():
+                reasons[env_id] = "return_home_timeout"
         stalled = torch.tensor([reason is not None for reason in reasons], device=self.device) & state.ready & ~cleared
         base_failure = terminated & ~cleared
         terminated = terminated | stalled

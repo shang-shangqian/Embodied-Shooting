@@ -4,6 +4,7 @@ import os
 from collections.abc import Sequence
 from typing import cast
 import traceback
+import re
 from pathlib import Path
 import imageio.v2 as imageio
 import torch
@@ -27,7 +28,12 @@ from isaaclab.sensors import (
     patterns,
 )
 from isaaclab.utils.math import quat_apply, sample_uniform, wrap_to_pi
-from pxr import Gf, UsdGeom
+from pxr import Gf, Usd, UsdGeom
+
+try:
+    from .yaw_control import observation_contract, reachable_yaw_goal
+except ImportError:
+    from yaw_control import observation_contract, reachable_yaw_goal
 
 
 @configclass
@@ -52,7 +58,7 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     # pred_pos_base(3)
     # pred_vel_base(3)
     # pred_distance(1)
-    # policy_yaw_error_los(1)      # 目标直视 yaw 与真实枪口 yaw 的误差，不含重力补偿
+    # policy_yaw_error(1)          # 默认：目标 yaw 减枪口 yaw，再折返到 [-pi, pi]
     # policy_pitch_error_los(1)    # 目标直视 pitch 与真实枪口 pitch 的误差，不含重力补偿
     # turret_yaw_pitch(2)
     # turret_yaw_pitch_vel(2)
@@ -220,6 +226,7 @@ class TurretAimEnvCfg(DirectRLEnvCfg):
     # 远距离命中时 0.01~0.05rad 都是关键误差范围。
     aim_error_obs_scale: float = 0.05
     aim_error_obs_clip: float = 5.0
+    yaw_error_mode: str = "wrapped_los"  # Circular shortest turn, matching legacy checkpoints.
 
     # --- locomotion policy (for moving-base aiming) ---
     enable_locomotion_policy: bool = False      #是否启用预训练的移动策略来控制腿部关节（否则保持默认站立姿态）
@@ -347,6 +354,7 @@ class TurretAimEnv(DirectRLEnv):
     cfg: TurretAimEnvCfg
 
     def __init__(self, cfg: TurretAimEnvCfg, render_mode: str | None = None, **kwargs):
+        self.aim_observation_contract = observation_contract(cfg.yaw_error_mode, cfg.aim_error_obs_scale, cfg.aim_error_obs_clip)
         if cfg.max_shots_per_episode < 0:
             raise ValueError("max_shots_per_episode must be nonnegative (0 disables the budget)")
         # Target spheres are needed by camera/raycast training or interactive visualization only.
@@ -422,6 +430,8 @@ class TurretAimEnv(DirectRLEnv):
         self._forward_axis_b = torch.tensor(self.cfg.muzzle_forward_axis, device=self.device, dtype=torch.float32)
         self._forward_axis_b = self._forward_axis_b / (torch.norm(self._forward_axis_b) + 1e-6)
         self._muzzle_offset_b = torch.tensor(self.cfg.muzzle_offset_b, device=self.device, dtype=torch.float32)
+        if self.cfg.yaw_error_mode == "joint_reachable":
+            self._cache_yaw_joint_geometry(yaw_names[0])
 
         self._leg_joint_names = [
             "FL_HipX_joint", "FL_HipY_joint", "FL_Knee_joint",
@@ -2368,6 +2378,51 @@ class TurretAimEnv(DirectRLEnv):
         }
 
     # 炮台朝向计算
+    def _cache_yaw_joint_geometry(self, joint_name: str) -> None:
+        """Read USD joint frame once; use runtime parent-body poses thereafter."""
+        from isaacsim.core.utils.stage import get_current_stage
+
+        stage = get_current_stage()
+        env_root = stage.GetPrimAtPath("/World/envs/env_0")
+        matches = [prim for prim in Usd.PrimRange(env_root)
+                   if prim.GetName() == joint_name and prim.GetTypeName() == "PhysicsRevoluteJoint"]
+        if len(matches) != 1:
+            raise RuntimeError(f"Expected one USD yaw revolute joint named {joint_name}; got {len(matches)}")
+        joint = matches[0]
+        parents = joint.GetRelationship("physics:body0").GetTargets()
+        if len(parents) != 1:
+            raise RuntimeError("joint_reachable yaw requires a single runtime parent body")
+        body_ids, _ = self.turret.find_bodies(re.escape(parents[0].name))
+        if len(body_ids) != 1:
+            raise RuntimeError(f"Cannot resolve yaw parent body: {parents[0]}")
+        self._yaw_parent_body_id = int(body_ids[0])
+        axis_name = joint.GetAttribute("physics:axis").Get() or "X"
+        axis = {"X": (1., 0., 0.), "Y": (0., 1., 0.), "Z": (0., 0., 1.)}[axis_name]
+        rotation = joint.GetAttribute("physics:localRot0").Get() or Gf.Quatf(1.)
+        quat = torch.tensor([[float(rotation.GetReal()), *map(float, rotation.GetImaginary())]],
+                            device=self.device, dtype=torch.float32)
+        self._yaw_axis_parent = quat_apply(quat, torch.tensor([axis], device=self.device)).squeeze(0)
+        origin = joint.GetAttribute("physics:localPos0").Get() or Gf.Vec3f(0.)
+        self._yaw_pivot_parent = torch.tensor(tuple(origin), device=self.device, dtype=torch.float32)
+
+    def _compute_actor_reachable_yaw_error(self, policy_pos_base, valid_reference):
+        data = self.turret.data
+        parent_quat = data.body_quat_w[:, self._yaw_parent_body_id]
+        axis_w = quat_apply(parent_quat, self._yaw_axis_parent.expand(self.num_envs, -1))
+        pivot_w = (data.body_pos_w[:, self._yaw_parent_body_id]
+                   + quat_apply(parent_quat, self._yaw_pivot_parent.expand(self.num_envs, -1)))
+        target_w = data.root_pos_w + self._rotate_yaw_only_local_to_world(data.root_quat_w, policy_pos_base)
+        muzzle_w, _, forward_w = self._compute_turret_frame()
+        yaw_id = int(self._yaw_dof_ids[0])
+        result = reachable_yaw_goal(data.joint_pos[:, yaw_id], forward_w, axis_w,
+                                    target_w - pivot_w, muzzle_w - pivot_w,
+                                    data.joint_pos_limits[:, yaw_id])
+        current = data.joint_pos[:, yaw_id]
+        self._actor_yaw_goal_rad = torch.where(valid_reference, result.angle, current)
+        self._actor_yaw_goal_reachable = valid_reference & result.exact_reachable
+        self._actor_yaw_joint_error_rad = torch.where(valid_reference, result.error, torch.zeros_like(current))
+        return self._actor_yaw_joint_error_rad.unsqueeze(-1)
+
     def _compute_turret_frame(self) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Returns (muzzle_pos_w, quat_w, forward_w)."""
         if self._muzzle_body_id is not None:
@@ -2926,6 +2981,11 @@ class TurretAimEnv(DirectRLEnv):
             policy_pitch_ref_raw = self._rl_pred_pitch_base * pred_ready.to(dtype=torch.float32)
 
         policy_yaw_error = wrap_to_pi(policy_yaw_ref_raw - muzzle_yaw_base).unsqueeze(-1)
+        if self.cfg.yaw_error_mode == "joint_reachable":
+            # This uses ONLY the policy-side target state. Strict full-chain
+            # missing predictions receive a neutral yaw error, never a GT goal.
+            valid_reference = policy_distance.squeeze(-1) > 1e-6
+            policy_yaw_error = self._compute_actor_reachable_yaw_error(policy_pos_base, valid_reference)
         policy_pitch_error = (policy_pitch_ref_raw - muzzle_pitch_base).unsqueeze(-1)
 
         # Critic privileged obs always uses gravity-compensated ballistic reference.

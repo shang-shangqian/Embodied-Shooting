@@ -62,6 +62,20 @@ def test_timeout_is_not_reported_as_a_clearance():
     assert record["mean_firing_hz"] is None
 
 
+def test_physical_home_timeout_ends_episode_with_explicit_reason_and_report():
+    env = FakeEnv()
+    env._fire_command[:] = 0
+    state = module.install_static_salvo(env, target_count=2)
+    state.ready[:] = True
+    state.alive[:] = True
+    state.return_home = SimpleNamespace(failed=torch.tensor([True]),
+                                       summary=lambda i: dict(enabled=True, failed=True))
+    terminated, truncated = env._get_dones()
+    assert terminated.item() and not truncated.item()
+    assert state.records[0]['reason'] == 'return_home_timeout'
+    assert state.records[0]['return_home']['failed']
+
+
 class FakeEnv:
     def __init__(self):
         self.num_envs, self.device, self.step_dt = 1, "cpu", 0.02

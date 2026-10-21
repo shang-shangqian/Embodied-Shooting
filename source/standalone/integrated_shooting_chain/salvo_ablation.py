@@ -66,6 +66,9 @@ class SalvoAblation:
     def __init__(self, env, group, *, wait_for_velocity=None):
         self.config = SalvoAblationConfig(group, wait_for_velocity)
         self.env = env
+        self.return_home = getattr(env._static_salvo, "return_home", None)
+        if self.return_home is not None and (group != "D" or not self.config.pause_actor_when_unready):
+            raise ValueError("Return-home requires group D with velocity waiting enabled")
         self.last_target = [None]*env.num_envs
         self.hold_applied = torch.zeros(env.num_envs, dtype=torch.bool, device=env.device)
         self.reset_applied = torch.zeros_like(self.hold_applied)
@@ -74,13 +77,18 @@ class SalvoAblation:
         self.hold_steps = [0]*env.num_envs
         self.actor_resets = [0]*env.num_envs
         self.actor_wait_steps = [0]*env.num_envs
+        self.perception_wait_steps = [0]*env.num_envs
         self.events = [[] for _ in range(env.num_envs)]
 
     def reset_envs(self, ids):
+        ids = list(ids)
+        if self.return_home is not None:
+            self.return_home.reset_envs(ids)
         for i in ids:
             self.last_target[i] = None
             self.hold_steps[i] = self.actor_resets[i] = 0
             self.actor_wait_steps[i] = 0
+            self.perception_wait_steps[i] = 0
             self.events[i].clear()
             self.hold_applied[i] = self.reset_applied[i] = False
             self.actor_inference_skipped[i] = False
@@ -95,13 +103,26 @@ class SalvoAblation:
     def paused_envs(self):
         paused = (~self.prediction_ready() & (self.env._aim_warmup_left_steps <= 0)
                   if self.config.pause_actor_when_unready else torch.zeros_like(self.hold_applied))
+        perception_wait = paused.clone()
+        if self.return_home is not None:
+            homing = self.return_home.active | self.return_home.failed
+            paused |= homing
+            perception_wait &= ~homing
         self.actor_inference_skipped.copy_(paused)
         for i in paused.nonzero(as_tuple=False).flatten().tolist():
             self.actor_wait_steps[i] += 1
+        for i in perception_wait.nonzero(as_tuple=False).flatten().tolist():
+            self.perception_wait_steps[i] += 1
         return paused
 
     def before_inference(self, player):
         self.reset_applied[:] = False
+        if self.return_home is not None:
+            self.return_home.prepare()
+            for i in self.return_home.release_pending.nonzero(as_tuple=False).flatten().tolist():
+                self._reset_actor(player, i, int(self.env._static_salvo.active[i]), reason="return_home_completed")
+                self.return_home.release_pending[i] = False
+            return
         for i, target in enumerate(self.env._static_salvo.active.tolist()):
             if target < 0:
                 continue  # A temporary no-target gap does not erase the previous identity.
@@ -110,14 +131,22 @@ class SalvoAblation:
             # Preserve the common warmup history at the first acquisition.
             if old is None or old == target or not self.config.reset_actor_on_switch:
                 continue
-            states = player.states
-            if not isinstance(states, (tuple, list)) or len(states) != 2 or states[0].ndim != 3 or states[0].shape[1] != self.env.num_envs:
-                raise RuntimeError("Expected separate Actor/Critic GRU states [layers, envs, hidden]")
-            states[0][:, i, :] = 0  # Never reset the Critic or velocity-estimator GRU.
-            self.reset_applied[i] = True
-            self.actor_resets[i] += 1
-            self.events[i].append(dict(sim_s=int(self.env.episode_length_buf[i])*self.env.step_dt,
-                                       old_target_id=old, target_id=target, event="actor_gru_reset"))
+            self._reset_actor(player, i, target, old_target=old)
+
+    def _reset_actor(self, player, i, target, *, old_target=None, reason=None):
+        states = player.states
+        if not isinstance(states, (tuple, list)) or len(states) != 2 or states[0].ndim != 3 or states[0].shape[1] != self.env.num_envs:
+            raise RuntimeError("Expected separate Actor/Critic GRU states [layers, envs, hidden]")
+        states[0][:, i, :] = 0  # Never reset Critic or velocity-estimator GRU.
+        self.reset_applied[i] = True
+        self.actor_resets[i] += 1
+        event = dict(sim_s=int(self.env.episode_length_buf[i])*self.env.step_dt,
+                     old_target_id=self.last_target[i] if old_target is None else old_target,
+                     target_id=target, event="actor_gru_reset")
+        if reason is not None:
+            event["reason"] = reason
+        self.events[i].append(event)
+        self.last_target[i] = target
 
     def summary(self, env_id):
         return dict(group=self.config.group, hold_when_unready=self.config.hold_when_unready,
@@ -125,6 +154,9 @@ class SalvoAblation:
                     wait_for_velocity=self.config.pause_actor_when_unready,
                     actor_wait_steps=self.actor_wait_steps[env_id],
                     actor_wait_sim_s=self.actor_wait_steps[env_id]*self.env.step_dt,
+                    actor_wait_includes_return_home=self.return_home is not None,
+                    perception_wait_steps=self.perception_wait_steps[env_id],
+                    perception_wait_sim_s=self.perception_wait_steps[env_id]*self.env.step_dt,
                     hold_steps=self.hold_steps[env_id], actor_gru_resets=self.actor_resets[env_id],
                     events=list(self.events[env_id]))
 
@@ -135,9 +167,14 @@ def install_salvo_ablation(env, group="D", *, wait_for_velocity=None):
     original_pre, original_reset = env._pre_physics_step, env._reset_idx
 
     def pre(self, actions):
+        homing = experiment.return_home
+        if homing is not None:
+            actions = homing.override_actions(actions)
         ready = experiment.prediction_ready()
         hold = ~ready & (self._aim_warmup_left_steps <= 0) & (
             experiment.config.hold_when_unready or experiment.config.pause_actor_when_unready)
+        if homing is not None:
+            hold &= ~homing.active
         command = self._turret_pos_targets.clone() if hold.any() else None
         result = original_pre(actions)
         experiment.proposed_delta.copy_(self._delta_pos)

@@ -46,6 +46,14 @@ class SalvoEngagementScheduler:
         self.selection_round = 1
         self.attempt_shots = 0
         self.consecutive_misses = 0
+        self.excluded_attempt_s = 0.
+
+    def exclude_attempt_time(self, dt_s):
+        """Exclude an external homing control step from only the attempt timeout."""
+        if not math.isfinite(dt_s) or dt_s < 0:
+            raise ValueError("Excluded attempt duration must be finite and nonnegative")
+        if self.current_id is not None:
+            self.excluded_attempt_s += dt_s
 
     def record_shot(self, target_id, *, hit):
         """Called once after an actual shot is scored, before choosing the next ID.
@@ -81,7 +89,7 @@ class SalvoEngagementScheduler:
             miss_limit_reached = (self.config.switch_policy in ("misses", "both")
                                   and self.consecutive_misses >= self.config.miss_limit)
             timeout_reached = (self.config.switch_policy in ("timeout", "both")
-                               and now_s - self.started_s >= self.config.stall_timeout_s - 1e-9)
+                               and now_s - self.started_s - self.excluded_attempt_s >= self.config.stall_timeout_s - 1e-9)
             if current in self.removed:
                 self.events.append(dict(sim_s=now_s, target_id=current, event="destroyed",
                                         selection_round=self.selection_round))
@@ -102,8 +110,12 @@ class SalvoEngagementScheduler:
                 self.current_id = None
             else:
                 return current
+            if self.excluded_attempt_s:
+                self.events[-1].update(attempt_excluded_sim_s=self.excluded_attempt_s,
+                                       attempt_elapsed_sim_s=max(0., now_s-self.started_s-self.excluded_attempt_s))
         if self.current_id is None:
             self.attempt_shots = self.consecutive_misses = 0
+            self.excluded_attempt_s = 0.
         # Unavailable tracks do not block a new round. A visible current-round
         # target still cooling down does block it: wait instead of retrying a
         # target that already failed this round.
@@ -121,6 +133,7 @@ class SalvoEngagementScheduler:
         self.pending_ids.remove(selected)
         self.current_id = selected
         self.started_s = now_s
+        self.excluded_attempt_s = 0.
         self.attempt_shots = self.consecutive_misses = 0
         self.attempts[selected] = self.attempts.get(selected, 0) + 1
         self.events.append(dict(sim_s=now_s, target_id=selected, event="selected",
@@ -152,6 +165,7 @@ class SalvoEngagementScheduler:
             "active_target_id": self.current_id,
             "active_attempt_shots": self.attempt_shots,
             "active_consecutive_misses": self.consecutive_misses,
+            "active_attempt_excluded_sim_s": self.excluded_attempt_s,
             "attempts": dict(self.attempts),
             "deferred_count": sum(e["event"] == "deferred" for e in self.events),
             "exhausted_target_ids": sorted({e["target_id"] for e in self.events

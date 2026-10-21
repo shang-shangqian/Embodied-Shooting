@@ -180,6 +180,7 @@ For example, to evaluate the five-shot run's best policy on SD:
 CUDA_VISIBLE_DEVICES=0 python -u source/standalone/test7_2_weight/eval_with_track_gt.py \
   --headless \
   --checkpoint runs/test7_2_weight/full_chain_5shots_20261017_201341 \
+  --yaw_error_mode wrapped_los \
   --which best \
   --locomotion_policy logs/rsl_rl/deeprobotics_lite3_rtx_flat/2026-07-29_20-44-55_test7_2_weight_flat/exported/policy.pt \
   --full_chain_perception --case sd --episodes 200 \
@@ -241,6 +242,25 @@ fallback.
 
 ## Evaluate an existing RL policy with the full chain
 
+As of 2026-10-21, training and evaluation default to `--yaw_error_mode wrapped_los`
+(`wrapped_los_v1`): Actor yaw is target yaw minus measured muzzle yaw, wrapped
+to [-pi, pi] for the circular shortest turn. This matches historical checkpoints.
+`--yaw_error_mode joint_reachable` remains an explicit experimental option
+requiring adapted weights.
+Checkpoints and reports record the observation contract. See the
+[geometry and compatibility notes](../test7_2_weight/YAW_REACHABLE_OBSERVATION_20261020.md).
+CSV schema 5 adds the raw Actor yaw goal, joint error, and yaw reachability flag;
+physical LOS diagnostic errors retain their existing meaning.
+
+Optional `--salvo_return_home` physically returns yaw/pitch to zero before each
+attempt. It is off by default and requires D with velocity waiting. Actor inference
+and firing pause until measured joint positions and velocities settle; Actor state
+is cleared once after homing, including the first acquisition and same-ID retries.
+Homing uses the existing incremental position commands, without a physics reset.
+Its time counts toward the episode but is excluded from the 3 s attempt deadline.
+CSV schema 6 records homing control and excluded time. See the
+[return-home experiment and command](SS_RETURN_HOME_20261021.md).
+
 For SS clearance of 100 stationary targets, add `--case ss --static_salvo
 --salvo_targets 100 --num_envs 1 --episodes 1`. This mode automatically enables
 full-chain perception. After standing warmup, one RGB frame and all 100 GT boxes
@@ -292,7 +312,7 @@ The latter records failure insertion order, not a fixed next-round selection ord
 `pending_target_ids` combines both pools, excluding the current target; selection
 and failure events also record their round. Historical saved runs keep their
 original selection metadata and are not relabeled by this change.
-The four-group campaign passes each group explicitly, uses the old 3 s timeout,
+The four-group campaign passes each group explicitly, uses legacy wrapped yaw observations and the old 3 s timeout,
 and disables velocity waits to retain the original experiment. These controls apply only
 to static salvo evaluation.
 No later GT boxes are supplied, including on tracking loss. Lost, unhit targets

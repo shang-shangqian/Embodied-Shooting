@@ -2,8 +2,9 @@
 
 `--static_salvo` 自动生成逐步 CSV；版本 2 增加“预测方向 → 决策动作 → 关节执行 → 枪口方向”
 的完整记录。无需开启 `--debug_diagnostics`，也不受前 50 步调试打印限制。
-版本 3 增加速度链就绪状态和 Actor 等待期间是否跳过推理；当前版本 4 增加本次尝试的
-实际射击数与连续未命中枪数。
+版本 3 增加速度链就绪状态和 Actor 等待期间是否跳过推理；版本 4 增加本次尝试的
+实际射击数与连续未命中枪数；版本 5 增加 Actor 原始可达 yaw 目标关节角与误差；
+当前版本 6 增加可选物理回零状态和从尝试时限中排除的回零时间。
 默认与 JSON 报告同目录、同名，扩展名为 `.steps.csv`；用
 `--salvo_diagnostics <新CSV路径>` 指定其他位置。已有文件不会被覆盖。
 
@@ -58,6 +59,7 @@ CSV 写出不会推进物理、调用渲染、重新跟踪或测距。弹道字�
 | `*_command_clamped` | 实际目标增量与请求增量相差超过 1e-6 rad |
 | `actor_observation` | 本动作之前最后一次环境输出的完整 28 维 policy 观测，JSON 数组 |
 | `actor_obs_distance` / `actor_obs_yaw_error` / `actor_obs_pitch_error` | 该数组索引 6/7/8，已经环境归一化、裁剪；不是米或弧度 |
+| `actor_yaw_goal_rad` / `actor_yaw_joint_error_rad` / `actor_yaw_goal_reachable` | 与上述 Actor 观测同时缓存的可达目标关节角、未折返关节误差和 yaw 平面解是否落入限位；旧观测模式下留空 |
 | `actor_obs_*ready` / `actor_obs_target_id` / `actor_obs_frame_step` / `actor_obs_sim_s` | 上述观测生成时的状态；可检查观测与动作是否属于同一目标/时刻 |
 | `actor_obs_available` | 是否实际捕获到观测；没有时留空，不用重算的观测冒充 |
 | `bbox_center_*_px` / `tracker_yaw_cam_rad` / `tracker_pitch_cam_rad` / `tracker_distance_m` | 决策时所选轨迹的框中心、相机方向和框尺寸估计距离 |
@@ -65,9 +67,12 @@ CSV 写出不会推进物理、调用渲染、重新跟踪或测距。弹道字�
 | `ballistic_cache_valid` / `ballistic_min_dist_m` / `ballistic_hit` / `ballistic_closest_time_s` | 本步评分缓存中的弹道最小距离、命中判定和最近点飞行时间，不是实际飞行弹丸 |
 | `hit_radius_m` | 判定命中使用的半径 |
 | `velocity_ready` | 决策时速度桥是否达到有效测距、观测次数和历史跨度要求 |
-| `actor_inference_skipped` | 本帧是否等待感知就绪而未调用策略网络；动作是保持/禁火占位 |
+| `actor_inference_skipped` | 本帧是否因感知等待或物理回零而未调用策略网络 |
 | `actor_wait_step_count` | 本局该环境累计跳过策略推理的控制步数 |
 | `attempt_shots` / `consecutive_misses` | 本次尝试已评分的实际射击数 / 连续未命中数；在该步评分后、下一次调度前采样 |
+| `return_home_active` / `return_home_failed` | 本步是否由回零控制器接管 / 是否回零超时；未启用时留空 |
+| `return_home_settle_count` / `return_home_step_count` | 连续到位稳定样本数 / 本局累计物理回零控制步数 |
+| `attempt_excluded_sim_s` | 本次尝试已排除的物理回零时间；整局计时仍继续 |
 
 `actor_observation` 的布局为：位置方向 0–2、速度 3–5、距离 6、yaw/pitch 误差 7–8、
 机器人分支 9–27。这是环境 sanitize/clip 后、RL-Games 预处理及网络内部运行统计归一化前的
@@ -76,7 +81,12 @@ CSV 写出不会推进物理、调用渲染、重新跟踪或测距。弹道字�
 
 角度单位均为弧度。Yaw-only base 中 yaw=`atan2(y,x)`，pitch=`atan2(-z,hypot(x,y))`，
 所以抬枪方向的 pitch 为负。相机字段使用 ROS optical 坐标（x 右、y 下、z 前）。
-yaw 差值折返到 [-π,π]；位置控制目标角差保留原值。
+物理 LOS yaw 差值折返到 [-π,π]；位置控制目标角差及新的 Actor yaw 关节误差保留原值。
+2026-10-21 起，默认恢复 `--yaw_error_mode wrapped_los`，Actor yaw 使用圆周最短方向误差，
+与历史权重输入一致。显式选择 `--yaw_error_mode joint_reachable` 时才使用可达目标
+关节角减实际角，此模式需要微调适配；`actor_yaw_goal_reachable` 只描述 yaw 平面解，
+不代表完整三维弹道可达。详见
+[yaw 观测修改说明](../test7_2_weight/YAW_REACHABLE_OBSERVATION_20261020.md)。
 上述枪口方向误差是直视 LOS 误差，未加入重力补偿。判断能否命中应同时查看弹道字段，
 不能要求 LOS 误差必须为零。
 
@@ -89,13 +99,25 @@ yaw 差值折返到 [-π,π]；位置控制目标角差保留原值。
 诊断记录本身不改变动作、循环状态、开火奖励或阈值；控制保持和 Actor 状态清空由下述
 射击流程配置决定。
 
-JSON 报告记录 `diagnostics_schema_version=4`、采样协议，以及决策模型、速度模型、
+JSON 报告记录 `diagnostics_schema_version=6`、采样协议，以及决策模型、速度模型、
 OSTrack 权重的实际路径和随机种子配置。`control_diagnostics_config` 记录枪口连杆/forward 轴/
 偏移、yaw/pitch 最大动作增量及误差观测缩放/裁剪参数，方便核对控制约定。
-旧报告没有这些字段，不能依赖当前默认模型来复现。
+报告同时保存 `aim_observation_contract`、`checkpoint_aim_observation_contract` 和两者是否匹配。
+旧报告没有这些字段，不能依赖当前默认模型或默认 yaw 观测模式来复现。
 需要复现旧问题时保留 100 目标、明确指定原决策与速度权重，先将时限缩为 30 个仿真秒。
 
 ## A/B/C/D 对照实验
+
+可选 `--salvo_return_home` 在每次目标尝试开始时先物理回零，默认关闭。实际关节位置和
+角速度连续达标后才清空 Actor 并允许推理；回零期间保持禁火、冻结两路决策循环状态，
+视觉和速度模块继续更新。此模式仅支持 D 且必须等待速度，不能与 A/B/C 或关闭速度等待混用。
+`blocked_reason=return_home` 明确区分物理回零与测距未就绪。`action_*_raw` 仍为进入控制
+包装器的动作，回零期间通常是占位 `[0,0,-1]`；`action_yaw/pitch` 是控制器接管后真正施加的
+回零动作，关节目标正常经过位置驱动，不是 Actor 提议，也没有瞬移或重置物理状态。
+每局 `return_home` 记录回零时间、完成次数、失败状态和逐次事件。`ablation.actor_wait_sim_s`
+此时包含回零与感知等待，新增 `perception_wait_sim_s` 仅计回零之外的感知等待，两者不能重复相加。
+三秒尝试时限只排除物理回零步，感知等待仍计入，整局时限包含全部回零。
+完整参数和不录像命令见 [回零对照说明](SS_RETURN_HOME_20261021.md)。
 
 常规 `--static_salvo` 默认以 `--salvo_switch_policy both --salvo_miss_limit 5
 --salvo_stall_timeout_s 3` 调度。
@@ -147,7 +169,7 @@ B/D 保留网络提出的原动作，但撤销未就绪步的控制目标角增�
 不匹配时拒绝运行。布局只用于仿真场景生成，不给视觉增加 GT 初始化。
 
 从已设置 Isaac 环境的终端顺序运行四组（默认不录像、每组 30 个仿真秒）：
-该四组脚本显式采用旧 3 秒切换规则并关闭等待速度后推理，保持原 A/B/C/D 的两因素定义；
+该四组脚本显式采用旧 yaw 观测与 3 秒切换规则并关闭等待速度后推理，保持原 A/B/C/D 的两因素定义；
 常规测试入口默认启用新 D 与五枪未命中切换流程。
 
 ```bash

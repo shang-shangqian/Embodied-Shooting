@@ -26,6 +26,7 @@ def group_command(group, output, *, gpu=1, timeout_s=30., seed=61, video=False):
     args = [sys.executable, "-u", str(ROOT/"source/standalone/test7_2_weight/eval_with_track_gt.py"),
             "--headless", "--device", f"cuda:{gpu}", "--num_envs", "1",
             "--checkpoint", str(ROOT/DECISION), "--locomotion_policy", str(ROOT/LOCOMOTION),
+            "--yaw_error_mode", "wrapped_los",
             "--velocity_backend", "legacy_gru", "--full_chain_velocity_checkpoint", str(ROOT/VELOCITY),
             "--fine_tracking", "--fine_tracker_policy", "adaptive", "--case", "ss", "--static_salvo",
             "--salvo_targets", "100", "--episodes", "1", "--salvo_timeout_s", str(timeout_s),

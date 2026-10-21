@@ -11,6 +11,7 @@ import asym_central_value_gru_network_gt
 from isaaclab.app import AppLauncher
 from target_follow_motion_gt import install_target_follow_motion
 from ppo_training_config import add_ppo_arguments, make_learning_rate_restore_agent, resolve_ppo_settings
+from yaw_control import checkpoint_contract, contracts_match, make_observation_contract_agent, observation_contract
 import types
 
 
@@ -340,6 +341,8 @@ def _install_mixed_training_logic(
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--headless", action="store_true")
+    parser.add_argument("--yaw_error_mode", choices=("joint_reachable", "wrapped_los"), default="wrapped_los",
+                        help="Actor yaw input: wrapped LOS shortest turn (default), or optional bounded joint-goal displacement.")
     parser.add_argument(
         "--training_mode",
         choices=("gt", "full_chain"),
@@ -548,6 +551,14 @@ def main():
         torch.cuda.set_device(local_rank if bool(args.distributed) else torch.device(launcher_device).index or 0)
 
     env_cfg = TurretAimEnvCfg()
+    env_cfg.yaw_error_mode = args.yaw_error_mode
+    aim_contract = observation_contract(args.yaw_error_mode, env_cfg.aim_error_obs_scale, env_cfg.aim_error_obs_clip)
+    print(f"[aim-contract] training observation = {aim_contract['version']}", flush=True)
+    if checkpoint_path is not None:
+        source_contract = checkpoint_contract(checkpoint_path)
+        if not contracts_match(source_contract, aim_contract):
+            print(f"[aim-contract] Finetuning from {source_contract['version']} to {aim_contract['version']}; "
+                  "the old checkpoint is not an adapted policy for the new yaw observation.", flush=True)
     env_cfg.max_shots_per_episode = args.max_shots_per_episode
     print(f"[train-mixed] episode_length_s={env_cfg.episode_length_s} "
           f"max_shots_per_episode={env_cfg.max_shots_per_episode} (0=unlimited)", flush=True)
@@ -868,7 +879,8 @@ def main():
     if global_rank == 0:
         settings_path = TRAIN_DIR / experiment_name / "training_settings.json"
         settings_path.parent.mkdir(parents=True, exist_ok=True)
-        settings_path.write_text(json.dumps({"arguments": vars(args), "ppo": ppo_settings}, indent=2) + "\n")
+        settings_path.write_text(json.dumps({"arguments": vars(args), "ppo": ppo_settings,
+                                             "aim_observation_contract": aim_contract}, indent=2) + "\n")
 
     config = {
         "params": {
@@ -940,6 +952,7 @@ def main():
     from rl_games.algos_torch.a2c_continuous import A2CAgent
 
     training_agent = make_learning_rate_restore_agent(A2CAgent, reset_learning_rate=args.reset_learning_rate)
+    training_agent = make_observation_contract_agent(training_agent, aim_contract)
     runner.algo_factory.register_builder("a2c_continuous", lambda **kwargs: training_agent(**kwargs))
 
     run_args: dict[str, Any] = {

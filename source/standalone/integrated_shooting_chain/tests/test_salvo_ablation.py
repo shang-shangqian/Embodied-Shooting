@@ -211,6 +211,7 @@ def test_campaign_commands_fix_models_seed_gpu_and_share_one_layout(tmp_path):
     assert all('--record_video' not in c for c in commands.values())
     assert all('--no-salvo_wait_for_velocity' in c for c in commands.values())
     assert all(option(c,'--salvo_switch_policy')=='timeout' for c in commands.values())
+    assert all(option(c,'--yaw_error_mode')=='wrapped_los' for c in commands.values())
 
 
 def test_resume_copies_only_completed_groups_preserves_source_and_checks_conditions(tmp_path):
