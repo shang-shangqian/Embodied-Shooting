@@ -1,0 +1,9 @@
+<mujoco model="lite3_full_chain_shooting">
+  <include file="scene.xml"/>
+  <worldbody>
+    <body name="shooting_target" mocap="true" pos="100 0 2">
+      <geom name="shooting_target_surface" type="sphere" size="0.35"
+            group="4" contype="0" conaffinity="0" rgba="0.95 0.12 0.06 1"/>
+    </body>
+  </worldbody>
+</mujoco>

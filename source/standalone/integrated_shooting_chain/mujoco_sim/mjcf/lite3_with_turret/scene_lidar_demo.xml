@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mujoco model="lite3_array_lidar_demo">
+  <include file="scene.xml"/>
+  <worldbody>
+    <body name="lidar_demo_target" mocap="true" pos="10.23 0 0.423">
+      <geom name="lidar_demo_target_surface" type="sphere" size="0.35"
+            group="4" contype="0" conaffinity="0" rgba="1 0.2 0.08 1"/>
+    </body>
+  </worldbody>
+</mujoco>

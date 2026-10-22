@@ -1,0 +1,14 @@
+{
+  "reference_report": "source/standalone/integrated_shooting_chain/video/ss_round_nearest_no_video_20261021_162148/salvo_report.json",
+  "decision_checkpoint": "runs/test7_2_weight/turret_aim_mixed_09-08-16-46-24/nn/last_turret_aim_ep_114000_rew__119.52544_.pth",
+  "velocity_checkpoint": "source/standalone/test11/speed_prediction/gru_runs_v2/20261009_152810_116165/best_model.pt",
+  "velocity_backend": "legacy_gru",
+  "ostrack_repo": "source/standalone/test_lk_ostrack/ostrack/OSTrack-main",
+  "ostrack_checkpoint": "source/standalone/test_lk_ostrack/ostrack/OSTrack-main/output/checkpoints/OSTrack_ep0300.pth.tar",
+  "ostrack_config": "vitb_256_mae_ce_32x4_ep300",
+  "fine_tracker_policy": "adaptive",
+  "min_velocity_observations": 3,
+  "min_velocity_history_s": 0.1,
+  "robot_warmup_s": 2.0,
+  "target_radius_m": 0.35
+}

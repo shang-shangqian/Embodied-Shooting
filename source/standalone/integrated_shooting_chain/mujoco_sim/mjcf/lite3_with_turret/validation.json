@@ -1,0 +1,65 @@
+{
+  "passed": true,
+  "mujoco_version": "3.16.0",
+  "source_usd": "/home/jby/IsaacLab-2.3.2/source/standalone/test7_2_weight/lite3_with_turret.usd",
+  "source_sha256": "24bf5d5577edbb8ed08bf29cee28aa112c057f60f0042845b04c4f82a9819a5b",
+  "source_unchanged": true,
+  "source_layers_checked": 11,
+  "rigid_bodies": 20,
+  "hinges": 14,
+  "total_mass_kg": 14.497599884867668,
+  "collider_types": {
+    "Cube": 6,
+    "Capsule": 12,
+    "Sphere": 4
+  },
+  "inferred_foot_inertias": [
+    "FL_FOOT",
+    "FR_FOOT",
+    "HL_FOOT",
+    "HR_FOOT"
+  ],
+  "maximum_inertia_tensor_error": 8.187894806610529e-16,
+  "maximum_compiled_mesh_support_error_m": 1.29857036235137e-08,
+  "kinematic_poses_checked": 22,
+  "maximum_body_position_error_m": 1.6653345369377348e-16,
+  "maximum_body_rotation_matrix_error": 5.551115123125783e-16,
+  "mounted_camera": {
+    "name": "tracking_camera",
+    "resolution": [
+      1024,
+      576
+    ],
+    "parent_body": "TORSO",
+    "source": "/home/jby/IsaacLab-2.3.2/source/standalone/test_lk_ostrack/multi_target_collect_env.py"
+  },
+  "stand_pd_smoke_test": {
+    "duration_seconds": 4.999999999999916,
+    "finite_state": true,
+    "controller": "deterministic default-position torque PD; no learned policy or actuator delay",
+    "initial_base_height_m": 0.35,
+    "final_base_position_m": [
+      -0.1300379304542078,
+      6.717236143976828e-05,
+      0.22601867556261165
+    ],
+    "base_height_range_m": [
+      0.2243590049163163,
+      0.34975475
+    ],
+    "maximum_tilt_degrees": 14.366989873337081,
+    "maximum_contacts": 6,
+    "minimum_contact_distance_m": -0.008672246101256886,
+    "solver_warnings": {}
+  },
+  "scope": "USD extraction versus native MuJoCo compilation and short deterministic PD stance only.",
+  "not_validated": [
+    "Learned-policy locomotion",
+    "Exact PhysX contact/drive equivalence",
+    "PhysX auto-computed foot inertia measured at runtime",
+    "External camera housing geometry and Isaac RTX image appearance",
+    "OSTrack/LK integration and camera update scheduling",
+    "Four unresolved foot visual mesh references",
+    "Delayed actuator behavior and joint velocity limits"
+  ]
+}

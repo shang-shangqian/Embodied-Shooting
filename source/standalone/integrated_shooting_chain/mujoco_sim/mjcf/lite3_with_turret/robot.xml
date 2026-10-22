@@ -1,0 +1,163 @@
+<?xml version='1.0' encoding='utf-8'?>
+<mujoco model="lite3_with_turret_from_original_usd">
+  <compiler angle="radian" meshdir="assets" inertiafromgeom="false" fusestatic="false" balanceinertia="false" autolimits="true" alignfree="false" />
+  <option timestep="0.005" gravity="0 0 -9.81" integrator="implicitfast" iterations="50" />
+  <default>
+    <joint damping="0" armature="0" frictionloss="0" />
+    <geom friction="1 0 0" condim="3" solref="0.02 1" solimp="0.9 0.95 0.001" />
+  </default>
+  <asset>
+    <mesh name="TORSO__visuals_torso_node_STL_BINARY__mesh" file="TORSO__visuals_torso_node_STL_BINARY__mesh.obj" />
+    <mesh name="TORSO__Cube" file="TORSO__Cube.obj" />
+    <mesh name="FL_HIP__visuals_hip_node_STL_BINARY__mesh" file="FL_HIP__visuals_hip_node_STL_BINARY__mesh.obj" />
+    <mesh name="FL_THIGH__visuals_thigh_node_STL_BINARY__mesh" file="FL_THIGH__visuals_thigh_node_STL_BINARY__mesh.obj" />
+    <mesh name="FL_SHANK__visuals_shank_node_STL_BINARY__mesh" file="FL_SHANK__visuals_shank_node_STL_BINARY__mesh.obj" />
+    <mesh name="FR_HIP__visuals_hip_node_STL_BINARY__mesh" file="FR_HIP__visuals_hip_node_STL_BINARY__mesh.obj" />
+    <mesh name="FR_THIGH__visuals_thigh_node_STL_BINARY__mesh" file="FR_THIGH__visuals_thigh_node_STL_BINARY__mesh.obj" />
+    <mesh name="FR_SHANK__visuals_shank_node_STL_BINARY__mesh" file="FR_SHANK__visuals_shank_node_STL_BINARY__mesh.obj" />
+    <mesh name="HL_HIP__visuals_hip_node_STL_BINARY__mesh" file="HL_HIP__visuals_hip_node_STL_BINARY__mesh.obj" />
+    <mesh name="HL_THIGH__visuals_thigh_node_STL_BINARY__mesh" file="HL_THIGH__visuals_thigh_node_STL_BINARY__mesh.obj" />
+    <mesh name="HL_SHANK__visuals_shank_node_STL_BINARY__mesh" file="HL_SHANK__visuals_shank_node_STL_BINARY__mesh.obj" />
+    <mesh name="HR_HIP__visuals_hip_node_STL_BINARY__mesh" file="HR_HIP__visuals_hip_node_STL_BINARY__mesh.obj" />
+    <mesh name="HR_THIGH__visuals_thigh_node_STL_BINARY__mesh" file="HR_THIGH__visuals_thigh_node_STL_BINARY__mesh.obj" />
+    <mesh name="HR_SHANK__visuals_shank_node_STL_BINARY__mesh" file="HR_SHANK__visuals_shank_node_STL_BINARY__mesh.obj" />
+  </asset>
+  <worldbody>
+    <body name="TORSO" pos="0 0 0.35" quat="1 0 0 0">
+      <inertial mass="6.165599822998047" pos="0.0215388610959053 -1.621902265469544e-05 0.0076034776866436" fullinertia="0.02909667820263096 0.08828359202794571 0.09950965507049825 2.28461121673778e-05 -0.01018465860026892 9.539654239205838e-06" />
+      <freejoint name="floating_base" />
+      <body name="FL_HIP" pos="0.1745000034570694 0.06199999898672104 0" quat="1 0 0 0">
+        <inertial mass="0.550000011920929" pos="-0.006010000128298998 -0.006653199903666973 0.0003429499920457602" fullinertia="0.0003949000092688948 0.0004028000112157315 0.0004472000000532717 0 0 0" />
+        <joint name="FL_HipX_joint" type="hinge" axis="-1 0 0" pos="0 0 0" range="-0.5229999638271946 0.5229999638271946" limited="true" />
+        <body name="FL_THIGH" pos="0 0.09735000133514404 0" quat="1 0 0 0">
+          <inertial mass="0.8600000143051147" pos="-0.003924500197172165 -0.01463199965655804 -0.0251460000872612" fullinertia="0.005735999904572964 0.004960000049322844 0.001435999991372228 0 0 0" />
+          <joint name="FL_HipY_joint" type="hinge" axis="0 -1 0" pos="0 0 0" range="-2.669999821442453 0.3140000083257926" limited="true" />
+          <body name="FL_SHANK" pos="0 0 -0.2000000029802322" quat="1 0 0 0">
+            <inertial mass="0.1529999971389771" pos="0.006479400210082531 -1.453499976378225e-06 -0.121569998562336" fullinertia="0.0008903900161385536 0.0009067200007848442 3.126600131508894e-05 0 0 0" />
+            <joint name="FL_Knee_joint" type="hinge" axis="0 -1 0" pos="0 0 0" range="0.5239999475270056 2.79200002992731" limited="true" />
+            <body name="FL_FOOT" pos="0 0 -0.2101200073957443" quat="1 0 0 0">
+              <inertial mass="0.01999999955296516" pos="0 0 0" fullinertia="3.871999871492387e-06 3.871999871492387e-06 3.871999871492387e-06 0 0 0" />
+              <geom name="collision__FL_FOOT__collisions_mesh_0_sphere" pos="0 0 0" quat="0.7071067690849304 0.7071067932881645 0 0" type="sphere" size="0.02199999988079071" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+            </body>
+            <geom name="visual__FL_SHANK__visuals_shank_node_STL_BINARY__mesh" type="mesh" mesh="FL_SHANK__visuals_shank_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+            <geom name="collision__FL_SHANK__collisions_mesh_0_capsule" type="capsule" fromto="0.01692014555036486 0 -0.08880399550709894 -0.006920145773882282 0 0.02880399684820346" size="0.01499999966472387" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+            <geom name="collision__FL_SHANK__collisions_mesh_1_capsule" type="capsule" fromto="0.002528077762650389 0 -0.1894385529203714 0.01747192179031477 0 -0.0905614482717215" size="0.01499999966472387" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+          </body>
+          <geom name="visual__FL_THIGH__visuals_thigh_node_STL_BINARY__mesh" type="mesh" mesh="FL_THIGH__visuals_thigh_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+          <geom name="collision__FL_THIGH__collisions_mesh_0_box" pos="-0.01499999966472387 0 -0.07999999821186066" quat="1 0 0 0" type="box" size="0.01999999955296516 0.02250000089406967 0.1000000014901161" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+        </body>
+        <geom name="visual__FL_HIP__visuals_hip_node_STL_BINARY__mesh" type="mesh" mesh="FL_HIP__visuals_hip_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+        <geom name="collision__FL_HIP__collisions_mesh_0_capsule" type="capsule" fromto="0 0.1250000037252902 2.567140735411691e-09 0 -0.02500000223517412 -2.567140735411691e-09" size="0.03999999910593033" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+      </body>
+      <body name="FR_HIP" pos="0.1745000034570694 -0.06199999898672104 0" quat="1 0 0 0">
+        <inertial mass="0.550000011920929" pos="-0.0105790002271533 0.01135800033807755 0.0004854600119870156" fullinertia="0.0004472000000532717 0.0004028000112157315 0.0003949000092688948 0 0 0" />
+        <joint name="FR_HipX_joint" type="hinge" axis="-1 0 0" pos="0 0 0" range="-0.5229999638271946 0.5229999638271946" limited="true" />
+        <body name="FR_THIGH" pos="0 -0.09735000133514404 0" quat="1 0 0 0">
+          <inertial mass="0.8600000143051147" pos="-0.003924500197172165 0.01463199965655804 -0.0251460000872612" fullinertia="0.005735999904572964 0.004960000049322844 0.001435999991372228 0 0 0" />
+          <joint name="FR_HipY_joint" type="hinge" axis="0 -1 0" pos="0 0 0" range="-2.669999821442453 0.3140000083257926" limited="true" />
+          <body name="FR_SHANK" pos="0 0 -0.2000000029802322" quat="1 0 0 0">
+            <inertial mass="0.1529999971389771" pos="0.006479400210082531 -1.455200049349514e-06 -0.121569998562336" fullinertia="0.0008903900161385536 0.0009067200007848442 3.126600131508894e-05 0 0 0" />
+            <joint name="FR_Knee_joint" type="hinge" axis="0 -1 0" pos="0 0 0" range="0.5239999475270056 2.79200002992731" limited="true" />
+            <body name="FR_FOOT" pos="0 0 -0.2101200073957443" quat="1 0 0 0">
+              <inertial mass="0.01999999955296516" pos="0 0 0" fullinertia="3.871999871492387e-06 3.871999871492387e-06 3.871999871492387e-06 0 0 0" />
+              <geom name="collision__FR_FOOT__collisions_mesh_0_sphere" pos="0 0 0" quat="0.7071067690849304 0.7071067932881645 0 0" type="sphere" size="0.02199999988079071" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+            </body>
+            <geom name="visual__FR_SHANK__visuals_shank_node_STL_BINARY__mesh" type="mesh" mesh="FR_SHANK__visuals_shank_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+            <geom name="collision__FR_SHANK__collisions_mesh_0_capsule" type="capsule" fromto="0.01692014555036486 0 -0.08880399550709894 -0.006920145773882282 0 0.02880399684820346" size="0.01499999966472387" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+            <geom name="collision__FR_SHANK__collisions_mesh_1_capsule" type="capsule" fromto="0.002528077762650389 0 -0.1894385529203714 0.01747192179031477 0 -0.0905614482717215" size="0.01499999966472387" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+          </body>
+          <geom name="visual__FR_THIGH__visuals_thigh_node_STL_BINARY__mesh" type="mesh" mesh="FR_THIGH__visuals_thigh_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+          <geom name="collision__FR_THIGH__collisions_mesh_0_box" pos="-0.01499999966472387 0 -0.07999999821186066" quat="1 0 0 0" type="box" size="0.01999999955296516 0.02250000089406967 0.1000000014901161" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+        </body>
+        <geom name="visual__FR_HIP__visuals_hip_node_STL_BINARY__mesh" type="mesh" mesh="FR_HIP__visuals_hip_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+        <geom name="collision__FR_HIP__collisions_mesh_0_capsule" type="capsule" fromto="0 0.02500000223517412 2.567140735411691e-09 0 -0.1250000037252902 -2.567140735411691e-09" size="0.03999999910593033" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+      </body>
+      <body name="HL_HIP" pos="-0.1745000034570694 0.06199999898672104 0" quat="1 0 0 0">
+        <inertial mass="0.550000011920929" pos="0.0109050003811717 -0.01263600029051304 0.001050999970175326" fullinertia="0.0003949000092688948 0.0004028000112157315 0.0004472000000532717 0 0 0" />
+        <joint name="HL_HipX_joint" type="hinge" axis="-1 0 0" pos="0 0 0" range="-0.5229999638271946 0.5229999638271946" limited="true" />
+        <body name="HL_THIGH" pos="0 0.09735000133514404 0" quat="1 0 0 0">
+          <inertial mass="0.8600000143051147" pos="-0.003924500197172165 -0.01463199965655804 -0.0251460000872612" fullinertia="0.005735999904572964 0.004960000049322844 0.001435999991372228 0 0 0" />
+          <joint name="HL_HipY_joint" type="hinge" axis="0 -1 0" pos="0 0 0" range="-2.669999821442453 0.3140000083257926" limited="true" />
+          <body name="HL_SHANK" pos="0 0 -0.2000000029802322" quat="1 0 0 0">
+            <inertial mass="0.1529999971389771" pos="0.006479400210082531 -1.455799974792171e-06 -0.121569998562336" fullinertia="0.0008903900161385536 0.0009067200007848442 3.126600131508894e-05 0 0 0" />
+            <joint name="HL_Knee_joint" type="hinge" axis="0 -1 0" pos="0 0 0" range="0.5239999475270056 2.79200002992731" limited="true" />
+            <body name="HL_FOOT" pos="0 0 -0.2101200073957443" quat="1 0 0 0">
+              <inertial mass="0.01999999955296516" pos="0 0 0" fullinertia="3.871999871492387e-06 3.871999871492387e-06 3.871999871492387e-06 0 0 0" />
+              <geom name="collision__HL_FOOT__collisions_mesh_0_sphere" pos="0 0 0" quat="0.7071067690849304 0.7071067932881645 0 0" type="sphere" size="0.02199999988079071" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+            </body>
+            <geom name="visual__HL_SHANK__visuals_shank_node_STL_BINARY__mesh" type="mesh" mesh="HL_SHANK__visuals_shank_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+            <geom name="collision__HL_SHANK__collisions_mesh_0_capsule" type="capsule" fromto="0.01692014555036486 0 -0.08880399550709894 -0.006920145773882282 0 0.02880399684820346" size="0.01499999966472387" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+            <geom name="collision__HL_SHANK__collisions_mesh_1_capsule" type="capsule" fromto="0.002528077762650389 0 -0.1894385529203714 0.01747192179031477 0 -0.0905614482717215" size="0.01499999966472387" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+          </body>
+          <geom name="visual__HL_THIGH__visuals_thigh_node_STL_BINARY__mesh" type="mesh" mesh="HL_THIGH__visuals_thigh_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+          <geom name="collision__HL_THIGH__collisions_mesh_0_box" pos="-0.01499999966472387 0 -0.07999999821186066" quat="1 0 0 0" type="box" size="0.01999999955296516 0.02250000089406967 0.1000000014901161" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+        </body>
+        <geom name="visual__HL_HIP__visuals_hip_node_STL_BINARY__mesh" type="mesh" mesh="HL_HIP__visuals_hip_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+        <geom name="collision__HL_HIP__collisions_mesh_0_capsule" type="capsule" fromto="0 0.1250000037252902 2.567140735411691e-09 0 -0.02500000223517412 -2.567140735411691e-09" size="0.03999999910593033" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+      </body>
+      <body name="HR_HIP" pos="-0.1745000034570694 -0.06199999898672104 0" quat="1 0 0 0">
+        <inertial mass="0.550000011920929" pos="0.0103540001437068 0.01142300013452768 0.0004949800204485655" fullinertia="0.0004472000000532717 0.0004028000112157315 0.0003949000092688948 0 0 0" />
+        <joint name="HR_HipX_joint" type="hinge" axis="-1 0 0" pos="0 0 0" range="-0.5229999638271946 0.5229999638271946" limited="true" />
+        <body name="HR_THIGH" pos="0 -0.09735000133514404 0" quat="1 0 0 0">
+          <inertial mass="0.8600000143051147" pos="-0.003924500197172165 0.01463199965655804 -0.0251460000872612" fullinertia="0.005735999904572964 0.004960000049322844 0.001435999991372228 0 0 0" />
+          <joint name="HR_HipY_joint" type="hinge" axis="0 -1 0" pos="0 0 0" range="-2.669999821442453 0.3140000083257926" limited="true" />
+          <body name="HR_SHANK" pos="0 0 -0.2000000029802322" quat="1 0 0 0">
+            <inertial mass="0.1529999971389771" pos="0.006479400210082531 -1.452900050935568e-06 -0.121569998562336" fullinertia="0.0008903900161385536 0.0009067200007848442 3.126600131508894e-05 0 0 0" />
+            <joint name="HR_Knee_joint" type="hinge" axis="0 -1 0" pos="0 0 0" range="0.5239999475270056 2.79200002992731" limited="true" />
+            <body name="HR_FOOT" pos="0 0 -0.2101200073957443" quat="1 0 0 0">
+              <inertial mass="0.01999999955296516" pos="0 0 0" fullinertia="3.871999871492387e-06 3.871999871492387e-06 3.871999871492387e-06 0 0 0" />
+              <geom name="collision__HR_FOOT__collisions_mesh_0_sphere" pos="0 0 0" quat="0.7071067690849304 0.7071067932881645 0 0" type="sphere" size="0.02199999988079071" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+            </body>
+            <geom name="visual__HR_SHANK__visuals_shank_node_STL_BINARY__mesh" type="mesh" mesh="HR_SHANK__visuals_shank_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+            <geom name="collision__HR_SHANK__collisions_mesh_0_capsule" type="capsule" fromto="0.01692014555036486 0 -0.08880399550709894 -0.006920145773882282 0 0.02880399684820346" size="0.01499999966472387" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+            <geom name="collision__HR_SHANK__collisions_mesh_1_capsule" type="capsule" fromto="0.002528077762650389 0 -0.1894385529203714 0.01747192179031477 0 -0.0905614482717215" size="0.01499999966472387" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+          </body>
+          <geom name="visual__HR_THIGH__visuals_thigh_node_STL_BINARY__mesh" type="mesh" mesh="HR_THIGH__visuals_thigh_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+          <geom name="collision__HR_THIGH__collisions_mesh_0_box" pos="-0.01499999966472387 0 -0.07999999821186066" quat="1 0 0 0" type="box" size="0.01999999955296516 0.02250000089406967 0.1000000014901161" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+        </body>
+        <geom name="visual__HR_HIP__visuals_hip_node_STL_BINARY__mesh" type="mesh" mesh="HR_HIP__visuals_hip_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+        <geom name="collision__HR_HIP__collisions_mesh_0_capsule" type="capsule" fromto="0 0.02500000223517412 2.567140735411691e-09 0 -0.1250000037252902 -2.567140735411691e-09" size="0.03999999910593033" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+      </body>
+      <body name="base_link" pos="0 0 0.0689999982714653" quat="1 0 0 0">
+        <inertial mass="0.8999999761581421" pos="0 0 0.01499999966472387" fullinertia="0.0006750000175088644 0.0006750000175088644 0.00121500005479902 0 0 0" />
+        <body name="yaw_link" pos="0 0 0.029999990016222" quat="1 0 0 0">
+          <inertial mass="0.699999988079071" pos="0 0 0.01499999966472387" fullinertia="0.0002793000021483749 0.0002793000021483749 0.0004535999905783683 0 0 0" />
+          <joint name="yaw_joint" type="hinge" axis="0 0 1" pos="0 0 0" range="-3.141589990428703 3.141589990428703" limited="true" />
+          <body name="pitch_link" pos="0 0 0.03000002168118954" quat="1 0 0 0">
+            <inertial mass="0.4000000059604645" pos="0.04724999889731407 0 0" fullinertia="1.432000044587767e-05 0.0003022000018972903 0.0003022000018972903 0 0 0" />
+            <joint name="pitch_joint" type="hinge" axis="0 1 0" pos="0 0 0" range="-1.047199881462552 1.047199881462552" limited="true" />
+            <geom name="visual__pitch_link__visuals_mesh_0_box" pos="0.04500000178813934 0 0" quat="1 0 0 0" type="box" size="0.04500000178813934 0.007499999832361937 0.007499999832361937" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+            <geom name="visual__pitch_link__visuals_mesh_1_sphere" pos="0.09000000357627869 0 0" quat="1 0 0 0" type="sphere" size="0.003000000026077032" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+          </body>
+          <geom name="visual__yaw_link__visuals_mesh_0_cylinder" type="cylinder" fromto="0 0 0 0 0 0.02999999932944775" size="0.03599999845027924" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+        </body>
+        <geom name="visual__base_link__visuals_mesh_0_box" pos="0 0 0.01499999966472387" quat="1 0 0 0" type="box" size="0.04500000178813934 0.04500000178813934 0.01499999966472387" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+      </body>
+      <site name="array_lidar" pos="0.23 0 0.073" quat="1 0 0 0" size="0.004" rgba="0.1 0.8 1 1" group="5" />
+      <geom name="visual__TORSO__visuals_torso_node_STL_BINARY__mesh" type="mesh" mesh="TORSO__visuals_torso_node_STL_BINARY__mesh" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+      <geom name="collision__TORSO__collisions_mesh_0_box" pos="0 0 0.009999999776482582" quat="1 0 0 0" type="box" size="0.25 0.05000000074505806 0.05999999865889549" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+      <geom name="collision__TORSO__collisions_mesh_1_box" pos="0 0 0.009999999776482582" quat="1 0 0 0" type="box" size="0.125 0.1000000014901161 0.05999999865889549" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
+      <geom name="visual__TORSO__Cube" type="mesh" mesh="TORSO__Cube" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
+      <camera name="tracking_camera" mode="fixed" pos="0.25 -0.0005 0.103" quat="0.4999999991609844 0.5000000008390159 -0.5000000008390157 -0.4999999991609843" sensorsize="0.005760000228881836 0.003240000128746033" resolution="1024 576" focalpixel="1777.777709960938 1777.777709960938" principalpixel="0 0" ipd="0" />
+    </body>
+  </worldbody>
+  <actuator>
+    <motor name="FL_HipX_joint_motor" joint="FL_HipX_joint" gear="1" ctrllimited="true" ctrlrange="-24 24" />
+    <motor name="FL_HipY_joint_motor" joint="FL_HipY_joint" gear="1" ctrllimited="true" ctrlrange="-24 24" />
+    <motor name="FL_Knee_joint_motor" joint="FL_Knee_joint" gear="1" ctrllimited="true" ctrlrange="-36 36" />
+    <motor name="FR_HipX_joint_motor" joint="FR_HipX_joint" gear="1" ctrllimited="true" ctrlrange="-24 24" />
+    <motor name="FR_HipY_joint_motor" joint="FR_HipY_joint" gear="1" ctrllimited="true" ctrlrange="-24 24" />
+    <motor name="FR_Knee_joint_motor" joint="FR_Knee_joint" gear="1" ctrllimited="true" ctrlrange="-36 36" />
+    <motor name="HL_HipX_joint_motor" joint="HL_HipX_joint" gear="1" ctrllimited="true" ctrlrange="-24 24" />
+    <motor name="HL_HipY_joint_motor" joint="HL_HipY_joint" gear="1" ctrllimited="true" ctrlrange="-24 24" />
+    <motor name="HL_Knee_joint_motor" joint="HL_Knee_joint" gear="1" ctrllimited="true" ctrlrange="-36 36" />
+    <motor name="HR_HipX_joint_motor" joint="HR_HipX_joint" gear="1" ctrllimited="true" ctrlrange="-24 24" />
+    <motor name="HR_HipY_joint_motor" joint="HR_HipY_joint" gear="1" ctrllimited="true" ctrlrange="-24 24" />
+    <motor name="HR_Knee_joint_motor" joint="HR_Knee_joint" gear="1" ctrllimited="true" ctrlrange="-36 36" />
+    <motor name="yaw_joint_motor" joint="yaw_joint" gear="1" ctrllimited="true" ctrlrange="-3 3" />
+    <motor name="pitch_joint_motor" joint="pitch_joint" gear="1" ctrllimited="true" ctrlrange="-2 2" />
+  </actuator>
+  <keyframe>
+    <key name="stand" qpos="0 0 0.35 1 0 0 0 0 -0.8 1.6 0 -0.8 1.6 0 -0.8 1.6 0 -0.8 1.6 0 0" />
+  </keyframe>
+</mujoco>

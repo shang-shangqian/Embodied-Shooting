@@ -1,5 +1,10 @@
 # Integrated shooting chain
 
+MuJoCo-specific sensors, conversion/preview/walking tools, MJCF assets and tests
+are grouped under [`mujoco_sim/`](mujoco_sim/README.md). Start there for MuJoCo
+commands and model documentation. Shared shooting-chain code and Isaac training
+entry points remain in this directory.
+
 This directory connects the three existing modules for both runtime inference
 and perception-in-the-loop PPO training:
 

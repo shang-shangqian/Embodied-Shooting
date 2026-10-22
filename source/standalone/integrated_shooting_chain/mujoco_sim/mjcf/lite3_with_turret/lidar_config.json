@@ -1,0 +1,13 @@
+{
+  "parent_body": "TORSO",
+  "offset_position": [0.23, 0.0, 0.073],
+  "offset_quaternion_wxyz": [1.0, 0.0, 0.0, 0.0],
+  "horizontal_fov_deg": 180.0,
+  "vertical_fov_deg": 40.0,
+  "horizontal_resolution_deg": 0.2,
+  "vertical_resolution_deg": 0.3,
+  "min_range": 0.3,
+  "max_range": 165.0,
+  "target_geom_group": 4,
+  "postprocess_reference": "parent"
+}
