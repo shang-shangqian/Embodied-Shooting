@@ -21,9 +21,11 @@ try:
 except ModuleNotFoundError as error:
     if error.name != 'mujoco':
         raise
-    package_dir = (Path(sys.prefix).parent / 'mujoco_test/lib'
-                   / f'python{sys.version_info.major}.{sys.version_info.minor}/site-packages')
-    if not package_dir.is_dir():
+    package_dirs = [Path(sys.prefix).parent / name / 'lib'
+                    / f'python{sys.version_info.major}.{sys.version_info.minor}/site-packages'
+                    for name in ('mujoco_sim', 'mujoco_test')]
+    package_dir = next((p for p in package_dirs if (p/'mujoco').is_dir()), None)
+    if package_dir is None:
         raise RuntimeError('MuJoCo is unavailable; run with the configured Isaac/MuJoCo Python environments.') from error
     sys.path.append(str(package_dir))
     import mujoco

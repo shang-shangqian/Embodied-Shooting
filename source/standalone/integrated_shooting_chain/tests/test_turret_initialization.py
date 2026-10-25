@@ -10,6 +10,7 @@ from typing import Any, cast
 
 import pytest
 import torch
+import numpy as np
 
 TRAIN = Path(__file__).resolve().parents[2]/'test7_2_weight'
 sys.path.insert(0, str(TRAIN))
@@ -150,9 +151,11 @@ def test_actual_reset_writes_same_sample_to_simulation_and_drive_and_preserves_o
     assert torch.equal(env._turret_pos_targets[[0, 2, 3, 5]], saved[[0, 2, 3, 5]])
 
 
-def test_both_ss_and_sd_hold_sampled_pose_for_full_warmup_while_sd_target_moves():
+@pytest.mark.parametrize('init_mode', ['mixed', 'random'])
+def test_both_ss_and_sd_hold_sampled_pose_for_full_warmup_while_sd_target_moves(init_mode):
     torch.manual_seed(12)
     env = make_env()
+    env.cfg.turret_init_config = TurretInitConfig(mode=init_mode)
     ids = torch.arange(env.num_envs)
     env._initialize_turret_joints(ids, env.turret.data.joint_pos, torch.zeros(env.num_envs, 5))
     initial = env._turret_reset_joint_pos.clone()
@@ -183,7 +186,10 @@ def test_both_ss_and_sd_hold_sampled_pose_for_full_warmup_while_sd_target_moves(
     assert torch.count_nonzero(env._target_pos_w[static]) == 0
     assert (env._target_pos_w[dynamic] > 0).all()
     env._pre_physics_step(torch.ones(env.num_envs, 3))
-    torch.testing.assert_close(env._turret_pos_targets, initial+torch.tensor([.03, .02]))
+    expected = initial+torch.tensor([.03, .02])
+    authored_limits = env.turret.data.joint_pos_limits[:, env._turret_dof_ids]
+    expected = torch.maximum(torch.minimum(expected, authored_limits[:, :, 1]), authored_limits[:, :, 0])
+    torch.testing.assert_close(env._turret_pos_targets, expected)
     # The actual physics apply method sends these targets to the original drive.
     calls = []
     env._leg_dof_ids = [0, 2, 4]
@@ -194,6 +200,25 @@ def test_both_ss_and_sd_hold_sampled_pose_for_full_warmup_while_sd_target_moves(
     exec(compile(ast.Module(body=[apply], type_ignores=[]), '<actual apply>', 'exec'), namespace)
     namespace[apply.name](env)
     torch.testing.assert_close(calls[0][0], env._turret_pos_targets)
+
+
+def test_random_eval_matches_mujoco_episode_sequence_and_does_not_consume_global_rng():
+    cfg = TurretInitConfig(mode='random')
+    before = torch.random.get_rng_state().clone()
+    np_before = np.random.get_state()
+    lim = limits(32)
+    samples = sample_turret_initialization(lim, cfg, env_ids=torch.zeros(32, dtype=torch.long),
+                                          episode_indices=torch.arange(32))
+    extent = np.deg2rad([90., 60.])
+    for episode, position in enumerate(samples.positions):
+        rng = np.random.default_rng(np.random.SeedSequence([61, episode]))
+        expected = torch.tensor(rng.uniform(-extent, extent), dtype=position.dtype)
+        torch.testing.assert_close(position, expected, atol=1e-7, rtol=0)
+    assert torch.equal(before, torch.random.get_rng_state())
+    for old, new in zip(np_before, np.random.get_state()):
+        np.testing.assert_equal(old, new)
+    # The evaluation sampler covers pitch beyond the mixed mode's +/-55 deg.
+    assert samples.positions[:, 1].rad2deg().abs().max() > 55.
 
 
 def training_args(*flags):

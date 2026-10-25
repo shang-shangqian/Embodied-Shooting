@@ -1,0 +1,147 @@
+{
+  "resolution": [
+    1024,
+    576
+  ],
+  "intrinsic_matrix": [
+    [
+      1022.22216796875,
+      0.0,
+      512.0
+    ],
+    [
+      0.0,
+      1022.22216796875,
+      288.0
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "fov_deg": [
+    53.209792926112364,
+    31.46921218159109
+  ],
+  "local_position_torso_m": [
+    0.25,
+    -0.0005000000237487257,
+    0.1029999852180481
+  ],
+  "local_quaternion_usd_wxyz": [
+    -0.5,
+    -0.5,
+    0.5,
+    0.5
+  ],
+  "source_camera": {
+    "path": "/World/envs/env_0/Lite3/Lite3/TORSO/SG2_OX03CC_5200_GMSL2_H60YA/Camera_SG2_OX03CC_5200_GMSL2_H60YA",
+    "type": "Camera",
+    "is_camera": true,
+    "attributes": {
+      "projection": {
+        "value": "perspective",
+        "authored": true
+      },
+      "focalLength": {
+        "value": 5.75,
+        "authored": true
+      },
+      "horizontalAperture": {
+        "value": 5.760000228881836,
+        "authored": true
+      },
+      "verticalAperture": {
+        "value": 3.240000009536743,
+        "authored": true
+      },
+      "horizontalApertureOffset": {
+        "value": 0.0,
+        "authored": false
+      },
+      "verticalApertureOffset": {
+        "value": 0.0,
+        "authored": false
+      },
+      "clippingRange": {
+        "value": [
+          0.10000000149011612,
+          1000000.0
+        ],
+        "authored": true
+      },
+      "fStop": {
+        "value": 0.0,
+        "authored": true
+      },
+      "focusDistance": {
+        "value": 700.0,
+        "authored": true
+      },
+      "cameraProjectionType": {
+        "value": "fisheyeOrthographic",
+        "authored": true
+      }
+    }
+  },
+  "proxy_camera": {
+    "path": "/World/RuntimeRenderCameras/env_0/Camera",
+    "type": "Camera",
+    "is_camera": true,
+    "attributes": {
+      "projection": {
+        "value": "perspective",
+        "authored": true
+      },
+      "focalLength": {
+        "value": 5.75,
+        "authored": true
+      },
+      "horizontalAperture": {
+        "value": 5.760000228881836,
+        "authored": true
+      },
+      "verticalAperture": {
+        "value": 3.240000009536743,
+        "authored": true
+      },
+      "horizontalApertureOffset": {
+        "value": 0.0,
+        "authored": true
+      },
+      "verticalApertureOffset": {
+        "value": 0.0,
+        "authored": true
+      },
+      "clippingRange": {
+        "value": [
+          0.10000000149011612,
+          1000000.0
+        ],
+        "authored": true
+      },
+      "fStop": {
+        "value": 0.0,
+        "authored": true
+      },
+      "focusDistance": {
+        "value": 700.0,
+        "authored": true
+      },
+      "cameraProjectionType": {
+        "value": null,
+        "authored": false
+      }
+    }
+  },
+  "schema_version": 1,
+  "profile_id": "isaac_ordinary_ss_runtime_20261023",
+  "provenance": {
+    "runtime_snapshot": "outputs/isaac_ss_camera_probe_20261023_v2/camera_parameters.json",
+    "runtime_snapshot_sha256": "434c3b78e7024faa540f859b742e810a3ffbb27572d21ed1765ec348ed9d23aa",
+    "parameters_python": "source/standalone/test7_2_weight/turret_aim_env_gt.py",
+    "parameters_sha256": "13b5cce2962a6474f48daa41d22d71afa118c95b68cc87a0f3bfda5af988d671",
+    "probe_script": "source/standalone/integrated_shooting_chain/tools/probe_isaac_ss_camera.py"
+  }
+}

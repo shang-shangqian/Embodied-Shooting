@@ -6,6 +6,7 @@ import math
 from typing import NamedTuple
 
 import torch
+import numpy as np
 
 
 @dataclass(frozen=True)
@@ -17,10 +18,17 @@ class TurretInitConfig:
     limit_margin_deg: float = 5.
     limit_yaw_band_deg: float = 25.
     limit_pitch_band_deg: float = 15.
+    random_yaw_deg: float = 90.
+    random_pitch_deg: float = 60.
+    random_seed: int = 61
 
     def __post_init__(self):
-        if self.mode not in ("zero", "mixed"):
-            raise ValueError("turret_init_mode must be zero or mixed")
+        if self.mode not in ("zero", "mixed", "random"):
+            raise ValueError("turret_init_mode must be zero, mixed or random")
+        if any(not math.isfinite(v) or v < 0 for v in (self.random_yaw_deg, self.random_pitch_deg)):
+            raise ValueError("Random turret init extents must be finite and nonnegative")
+        if not isinstance(self.random_seed, int) or not 0 <= self.random_seed < 2**31:
+            raise ValueError("Turret init seed must be an integer in [0, 2**31)")
         if (len(self.probabilities) != 3
                 or any(not math.isfinite(p) or p < 0 for p in self.probabilities)
                 or not math.isclose(sum(self.probabilities), 1., abs_tol=1e-6)):
@@ -39,12 +47,15 @@ class TurretInitSample(NamedTuple):
     limit_axes: torch.Tensor  # bitmask: 0=none, 1=yaw, 2=pitch, 3=both
 
 
-def sample_turret_initialization(limits, config=TurretInitConfig()):
+def sample_turret_initialization(limits, config=TurretInitConfig(), *, env_ids=None, episode_indices=None):
     """Sample absolute joint angles using each environment's authored limits.
 
     Zero mode consumes no random numbers, preserving evaluation initialization.
     Near-limit samples evenly mix yaw-only, pitch-only and both-axis states;
     signs are independent. The other axis uses its general sampling range.
+    Random mode uses full uniform evaluation extents and private NumPy streams
+    keyed by seed, environment ID and episode index; it leaves global training
+    and scene RNG state unchanged.
     """
     if limits.ndim != 3 or limits.shape[1:] != (2, 2) or not limits.is_floating_point():
         raise ValueError("Expected floating yaw/pitch limits [env, 2, lower/upper]")
@@ -57,6 +68,27 @@ def sample_turret_initialization(limits, config=TurretInitConfig()):
     groups = torch.zeros(count, device=limits.device, dtype=torch.long)
     axes = torch.zeros_like(groups)
     if config.mode == 'zero' or count == 0:
+        return TurretInitSample(positions, groups, axes)
+    if config.mode == 'random':
+        # Use the complete requested interval, without the mixed training
+        # mode's five-degree margin or a probability mass at zero.
+        extent = np.deg2rad([config.random_yaw_deg, config.random_pitch_deg])
+        authored = limits.detach().cpu().double().numpy()
+        lo = np.maximum(authored[:, :, 0], -extent)
+        hi = np.minimum(authored[:, :, 1], extent)
+        ids = list(range(count)) if env_ids is None else env_ids.detach().cpu().tolist()
+        episodes = [0]*count if episode_indices is None else episode_indices.detach().cpu().tolist()
+        if len(ids) != count or len(episodes) != count or any(value < 0 for value in ids+episodes):
+            raise ValueError("Expected one nonnegative environment ID and episode index per reset")
+        values = []
+        for row, (env_id, episode) in enumerate(zip(ids, episodes)):
+            # env 0 follows MuJoCo's SeedSequence([seed, episode]); other
+            # parallel environments have independent reset streams.
+            entropy = [config.random_seed, episode] + ([env_id] if env_id else [])
+            rng = np.random.default_rng(np.random.SeedSequence(entropy))
+            values.append(rng.uniform(lo[row], hi[row]))
+        positions = torch.as_tensor(np.asarray(values), device=limits.device, dtype=limits.dtype)
+        groups.fill_(1)
         return TurretInitSample(positions, groups, axes)
     margin = math.radians(config.limit_margin_deg)
     safe_lower, safe_upper = lower+margin, upper-margin

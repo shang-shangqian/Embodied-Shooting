@@ -4203,52 +4203,59 @@
   "camera": {
     "name": "tracking_camera",
     "parent_body": "TORSO",
+    "profile_id": "isaac_ordinary_ss_runtime_20261023",
     "width": 1024,
     "height": 576,
-    "fx": 1777.7777099609375,
-    "fy": 1777.7777099609375,
+    "fx": 1022.22216796875,
+    "fy": 1022.22216796875,
     "cx": 512.0,
     "cy": 288.0,
     "near": 0.10000000149011612,
     "far": 1000000.0,
     "position_body": [
       0.25,
-      -0.0005,
-      0.10300000000000004
+      -0.0005000000237487257,
+      0.1029999852180481
     ],
     "quaternion_body_wxyz": [
-      0.49999999916098437,
-      0.5000000008390159,
-      -0.5000000008390157,
-      -0.49999999916098425
+      0.5,
+      0.5,
+      -0.5,
+      -0.5
     ],
     "sensor_size": [
       0.005760000228881836,
-      0.0032400001287460328
+      0.003240000009536743
     ],
     "source": {
-      "parameters_python": "/home/jby/IsaacLab-2.3.2/source/standalone/test_lk_ostrack/multi_target_collect_env.py",
-      "parameters_sha256": "67a4fabfacd2d1c5ea2222c377b9af64b182c49b18cd5d95e72847e531bb948f",
-      "camera_prim": "/World/Lite3/TORSO/SG2_OX03CC_5200_GMSL2_H60YA/Camera_SG2_OX03CC_5200_GMSL2_H60YA",
-      "fallback_camera_used": true,
+      "calibration_file": "isaac_camera_calibration.json",
+      "calibration_sha256": "a397df95f759eb111ce397e85b51ff636c3803d5effccf428836146eb6607871",
+      "runtime_snapshot": "outputs/isaac_ss_camera_probe_20261023_v2/camera_parameters.json",
+      "runtime_snapshot_sha256": "434c3b78e7024faa540f859b742e810a3ffbb27572d21ed1765ec348ed9d23aa",
+      "parameters_python": "source/standalone/test7_2_weight/turret_aim_env_gt.py",
+      "parameters_sha256": "13b5cce2962a6474f48daa41d22d71afa118c95b68cc87a0f3bfda5af988d671",
+      "probe_script": "source/standalone/integrated_shooting_chain/tools/probe_isaac_ss_camera.py",
+      "camera_prim": "/World/envs/env_0/Lite3/Lite3/TORSO/SG2_OX03CC_5200_GMSL2_H60YA/Camera_SG2_OX03CC_5200_GMSL2_H60YA",
+      "render_camera_prim": "/World/RuntimeRenderCameras/env_0/Camera",
+      "fallback_camera_used": false,
       "camera_pose_body_usd": [
         [
-          2.220446049250313e-16,
-          -3.356062983073116e-09,
+          0.0,
+          0.0,
           -1.0,
           0.25
         ],
         [
           -1.0,
-          -7.451956791799921e-25,
-          -2.220446049250313e-16,
-          -0.0005
+          0.0,
+          0.0,
+          -0.0005000000237487257
         ],
         [
           0.0,
           1.0,
-          -3.356062983073116e-09,
-          0.10300000000000004
+          0.0,
+          0.1029999852180481
         ],
         [
           0.0,
@@ -4261,24 +4268,23 @@
         "camera_width": 1024,
         "camera_height": 576,
         "camera_projection_type": "perspective",
-        "camera_focal_length": 10.0,
-        "camera_horizontal_aperture": 5.76,
-        "camera_vertical_aperture": 3.24,
+        "camera_focal_length": 5.75,
+        "camera_horizontal_aperture": 5.760000228881836,
+        "camera_vertical_aperture": 3.240000009536743,
         "camera_clipping_range": [
-          0.1,
+          0.10000000149011612,
           1000000.0
         ],
         "camera_f_stop": 0.0,
-        "camera_focus_distance": 400.0
+        "camera_focus_distance": 700.0
       },
-      "intrinsics_rule": "IsaacLab square-pixel K from horizontal aperture, stored as float32."
+      "intrinsics_rule": "Measured ordinary test7_2_weight TiledCamera K, stored as float32."
     },
     "notes": [
-      "USD/OpenGL camera pose is used directly by MuJoCo; ROS optical rotation flips camera Y and Z.",
-      "This adds a pinhole camera sensor, not the unresolved external camera housing mesh.",
-      "No mass, inertia, rigid body, collision geometry or policy inputs are added.",
-      "Source f_stop=0 disables depth-of-field; focus_distance is recorded but not simulated.",
-      "Rendering/lighting differs from Isaac RTX. No image appearance equivalence is claimed."
+      "USD/OpenGL mount is used directly; ROS optical rotation flips camera Y and Z.",
+      "Intrinsics and mount come from the actual ordinary Isaac evaluation render proxy.",
+      "fStop=0 disables depth of field; focus distance is metadata, not optical focus simulation.",
+      "Rendering and lighting differ from Isaac RTX; matching calibration does not match image appearance."
     ]
   },
   "collider_types": {
@@ -4294,6 +4300,6 @@
     "Source world/ground/render content is excluded; scene.xml defines one plane at z=0.",
     "Four auto-computed foot COM/inertias are derived from their sole spherical collision shape.",
     "PhysX contact solver, friction-combine rules and drive implementation have no exact MJCF translation.",
-    "Camera intrinsics and fallback mount follow test_lk_ostrack; external housing geometry remains unresolved."
+    "Camera calibration comes from the measured ordinary Isaac evaluation render proxy; appearance differs from RTX."
   ]
 }

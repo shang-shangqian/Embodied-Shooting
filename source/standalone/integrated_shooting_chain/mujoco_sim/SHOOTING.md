@@ -1,5 +1,10 @@
 # MuJoCo 全链路射击测试
 
+**普通单目标 SS/SD 全链路评测：[`tools/eval_mujoco_single.py`](tools/eval_mujoco_single.py)；
+百目标 SS 清场评测：[`tools/eval_mujoco_salvo.py`](tools/eval_mujoco_salvo.py)。**
+参数、与 Isaac 评测的规则对齐、运行命令及已知差异见 [SALVO.md](SALVO.md)。
+下面描述的 `play_mujoco_shooting.py` 仍是单目标诊断入口。
+
 入口：`tools/play_mujoco_shooting.py`。本次已接入实际模型推理，并完成首轮运行。
 epoch 114000 基线没有触发开火；五发微调模型站立时发射两次、行走时发射一次，
 均未命中。选配相机旋转补偿后，本段站立和行走测试均保持跟踪。接口链路已

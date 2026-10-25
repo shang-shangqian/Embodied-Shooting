@@ -148,13 +148,13 @@ class MujocoShootingAdapter:
             prev_action=self.last_action.copy(), fire_intent=self.fire_intent,
             fire_cooldown_steps=self.cooldown)
 
-    def command(self, action, *, ready, warmup=False):
+    def command(self, action, *, ready, warmup=False, hold_when_unready=True):
         action = np.asarray(action, dtype=np.float32)
         if action.shape != (3,) or not np.isfinite(action).all():
             raise ValueError('Expected three finite shooting actions.')
         # Same hold/no-fire protocol as the last full-chain Isaac evaluation.
-        action = np.clip(action, -1., 1.) if ready or warmup else np.array([0., 0., -1.], dtype=np.float32)
-        if ready and not warmup:
+        action = np.clip(action, -1., 1.) if ready or warmup or not hold_when_unready else np.array([0., 0., -1.], dtype=np.float32)
+        if not warmup and (ready or not hold_when_unready):
             self.target += action[:2] * [self.cfg['max_delta_yaw'], self.cfg['max_delta_pitch']]
         self.target = np.clip(self.target, self.limits[:, 0], self.limits[:, 1])
         self.fire_intent = float((action[2] + 1.) * .5)

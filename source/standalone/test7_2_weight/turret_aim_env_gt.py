@@ -1148,6 +1148,8 @@ class TurretAimEnv(DirectRLEnv):
 
 
     def _pre_physics_step(self, actions: torch.Tensor) -> None:
+        if self.cfg.turret_init_config.mode == "random" and hasattr(self, "_turret_random_reset_used"):
+            self._turret_random_reset_used[:] = True
         # ---------------------------------------------------------
         # 在物理步之前，处理 reset 后延迟的 target 正式采样
         # 这样后续 render 出来的 rgb、target 状态、label 才是同一时刻的
@@ -1174,7 +1176,7 @@ class TurretAimEnv(DirectRLEnv):
         # warm-up: disable aiming/firing before robot settles
         aiming_enabled = self._aim_warmup_left_steps <= 0
         aiming_scale = aiming_enabled.float()
-        if self.cfg.turret_init_config.mode == "mixed":
+        if self.cfg.turret_init_config.mode in ("mixed", "random"):
             # Hold the sampled pose throughout standing warmup; do not return to zero.
             self._turret_pos_targets[~aiming_enabled] = self._turret_reset_joint_pos[~aiming_enabled]
 
@@ -3693,7 +3695,21 @@ class TurretAimEnv(DirectRLEnv):
 
     def _initialize_turret_joints(self, env_ids_t, joint_pos, joint_vel):
         limits = self.turret.data.joint_pos_limits[env_ids_t][:, self._turret_dof_ids]
-        sample = sample_turret_initialization(limits, self.cfg.turret_init_config)
+        if self.cfg.turret_init_config.mode == "random":
+            if not hasattr(self, "_turret_random_reset_counts"):
+                self._turret_random_reset_counts = env_ids_t.new_zeros(self.num_envs)
+                self._turret_random_reset_used = env_ids_t.new_ones(self.num_envs).bool()
+            # DirectRLEnv auto-resets on done; RL-Games may explicitly reset
+            # again before stepping the new episode. Reuse an unstepped sample
+            # so that these duplicate resets do not skip the MuJoCo sequence.
+            indices = self._turret_random_reset_counts[env_ids_t] - (
+                ~self._turret_random_reset_used[env_ids_t]).to(dtype=env_ids_t.dtype)
+            sample = sample_turret_initialization(limits, self.cfg.turret_init_config,
+                env_ids=env_ids_t, episode_indices=indices)
+            self._turret_random_reset_counts[env_ids_t] = indices + 1
+            self._turret_random_reset_used[env_ids_t] = False
+        else:
+            sample = sample_turret_initialization(limits, self.cfg.turret_init_config)
         joint_pos[:, self._turret_dof_ids] = sample.positions
         joint_vel[:, self._turret_dof_ids] = 0
         self._turret_pos_targets[env_ids_t] = sample.positions

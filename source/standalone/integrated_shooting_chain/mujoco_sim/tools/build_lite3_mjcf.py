@@ -6,7 +6,6 @@ automatically; MuJoCo compilation/validation runs separately in mujoco_test.
 from __future__ import annotations
 
 import argparse
-import ast
 from collections import Counter
 import hashlib
 import json
@@ -14,7 +13,6 @@ import os
 from pathlib import Path
 import re
 import sys
-from types import SimpleNamespace
 import xml.etree.ElementTree as ET
 
 WORKSPACE = Path(__file__).resolve().parents[5]
@@ -42,6 +40,9 @@ bootstrap_usd()
 import numpy as np
 from scipy.spatial.transform import Rotation
 from pxr import Usd, UsdGeom, UsdPhysics
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from camera_calibration import camera_profile_from_snapshot
 
 POLICY_JOINTS = [f'{leg}_{joint}' for leg in ('FL', 'FR', 'HL', 'HR')
                  for joint in ('HipX_joint', 'HipY_joint', 'Knee_joint')]
@@ -75,56 +76,14 @@ def default_angle(name):
 
 
 def tracking_camera_profile(stage):
-    """Apply the actual test_lk_ostrack fallback in the anonymous session layer.
+    """Keep rebuilds on the measured ordinary evaluator's calibration.
 
-    Only the source function is loaded; no Isaac application is launched and no
-    source layer is saved. The original authored camera mount is preserved.
+    Reading the bundled runtime capture does not depend on resolving the
+    remote SG2 reference or on the collector's different fallback focal length.
     """
-    source = WORKSPACE / 'source/standalone/test_lk_ostrack/multi_target_collect_env.py'
-    tree = ast.parse(source.read_text())
-    cfg_class = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'MultiTargetCollectEnvCfg')
-    values = {n.target.id: ast.literal_eval(n.value) for n in cfg_class.body
-              if isinstance(n, ast.AnnAssign) and n.target.id.startswith('camera_')}
-    function = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == '_ensure_vision_camera_prim')
-    path = '/World/Lite3/TORSO/SG2_OX03CC_5200_GMSL2_H60YA/Camera_SG2_OX03CC_5200_GMSL2_H60YA'
-    assert stage.GetPrimAtPath(path.rsplit('/', 1)[0]), 'Missing source camera mount'
-    original = stage.GetPrimAtPath(path)
-    fallback = not (original and original.IsA(UsdGeom.Camera))
-    namespace = {'sim_utils': SimpleNamespace(get_current_stage=lambda: stage)}
-    exec(compile(ast.fix_missing_locations(ast.Module(body=[function], type_ignores=[])), str(source), 'exec'), namespace)
-    target = stage.GetEditTarget()
-    stage.SetEditTarget(stage.GetSessionLayer())
-    try:
-        cfg = SimpleNamespace(**values, spawn_fallback_camera=True, camera_prim_path_expr=path)
-        namespace['_ensure_vision_camera_prim'](SimpleNamespace(cfg=cfg))
-    finally:
-        stage.SetEditTarget(target)
-    camera = UsdGeom.Camera(stage.GetPrimAtPath(path))
-    cache = UsdGeom.XformCache()
-    torso_world = np.asarray(cache.GetLocalToWorldTransform(stage.GetPrimAtPath('/World/Lite3/TORSO')), dtype=float).T
-    cam_world = np.asarray(cache.GetLocalToWorldTransform(camera.GetPrim()), dtype=float).T
-    local = np.linalg.inv(torso_world) @ cam_world
-    assert np.allclose(local[:3, :3].T @ local[:3, :3], np.eye(3), atol=1e-7)
-    width, height = values['camera_width'], values['camera_height']
-    focal = float(camera.GetFocalLengthAttr().Get())
-    aperture = float(camera.GetHorizontalApertureAttr().Get())
-    # Match IsaacLab Camera._update_intrinsic_matrices: square pixels and float32 K.
-    fx = float(np.float32(width * focal / aperture))
-    near, far = map(float, camera.GetClippingRangeAttr().Get())
-    return {'name': 'tracking_camera', 'parent_body': 'TORSO', 'width': width, 'height': height,
-            'fx': fx, 'fy': fx, 'cx': width/2, 'cy': height/2,
-            'near': near, 'far': far, 'position_body': local[:3, 3].tolist(),
-            'quaternion_body_wxyz': wxyz(local[:3, :3]).tolist(),
-            'sensor_size': [aperture / 1000, aperture / 1000 * height / width],
-            'source': {'parameters_python': str(source), 'parameters_sha256': hashlib.sha256(source.read_bytes()).hexdigest(),
-                       'camera_prim': path, 'fallback_camera_used': fallback,
-                       'camera_pose_body_usd': local.tolist(), 'parameters': values,
-                       'intrinsics_rule': 'IsaacLab square-pixel K from horizontal aperture, stored as float32.'},
-            'notes': ['USD/OpenGL camera pose is used directly by MuJoCo; ROS optical rotation flips camera Y and Z.',
-                      'This adds a pinhole camera sensor, not the unresolved external camera housing mesh.',
-                      'No mass, inertia, rigid body, collision geometry or policy inputs are added.',
-                      'Source f_stop=0 disables depth-of-field; focus_distance is recorded but not simulated.',
-                      'Rendering/lighting differs from Isaac RTX. No image appearance equivalence is claimed.']}
+    if not stage.GetPrimAtPath('/World/Lite3/TORSO'):
+        raise ValueError('Missing source TORSO camera parent')
+    return camera_profile_from_snapshot()
 
 
 def mesh_export(prim, transform, path):
@@ -384,7 +343,9 @@ def build(args):
     ET.SubElement(body_xml['TORSO'], 'camera', name=camera_profile['name'], mode='fixed',
                   pos=numbers(camera_profile['position_body']), quat=numbers(camera_profile['quaternion_body_wxyz']),
                   sensorsize=numbers(camera_profile['sensor_size']), resolution=f"{camera_profile['width']} {camera_profile['height']}",
-                  focalpixel=numbers([camera_profile['fx'], camera_profile['fy']]), principalpixel='0 0', ipd='0')
+                  focalpixel=numbers([camera_profile['fx'], camera_profile['fy']]),
+                  principalpixel=numbers([camera_profile['width']/2-camera_profile['cx'],
+                                          camera_profile['cy']-camera_profile['height']/2]), ipd='0')
     (output / 'camera_config.json').write_text(json.dumps(camera_profile, indent=2) + '\n')
     ET.indent(model, space='  ')
     ET.ElementTree(model).write(output / 'robot.xml', encoding='utf-8', xml_declaration=True)
@@ -424,7 +385,7 @@ def build(args):
                           'Source world/ground/render content is excluded; scene.xml defines one plane at z=0.',
                           'Four auto-computed foot COM/inertias are derived from their sole spherical collision shape.',
                           'PhysX contact solver, friction-combine rules and drive implementation have no exact MJCF translation.',
-                          'Camera intrinsics and fallback mount follow test_lk_ostrack; external housing geometry remains unresolved.']}
+                          'Camera calibration comes from the measured ordinary Isaac evaluation render proxy; appearance differs from RTX.']}
     (output / 'source_manifest.json').write_text(json.dumps(manifest, indent=2) + '\n')
     assert hashlib.sha256(source.read_bytes()).hexdigest() == source_hash
     print(json.dumps({'output': str(output), 'bodies': len(bodies), 'hinges': len(native_joint_order),
