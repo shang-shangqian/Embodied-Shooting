@@ -19,6 +19,7 @@ if __package__ in {None, ""}:
     __package__ = "speed_prediction.legacy_gru"
 
 from ..common.time_aware_velocity_data import TAQ_LABEL_SEMANTICS, TAQ_STREAM_FORMAT, load_torch_payload
+from ..common.project_paths import resolve_project_path
 from .speed_prediction_model import VelocityPredictorGRU
 from .online_gru_velocity import load_legacy_checkpoint
 from .taq_dataset import causal_smooth, chunk_identity, split_episode_files
@@ -28,7 +29,7 @@ from .train_gru_velocity import WeightedSmoothL1Loss, set_seed
 def discover_episodes(data_dirs):
     files = set()
     for directory in data_dirs:
-        root = Path(directory).expanduser().resolve()
+        root = resolve_project_path(directory).resolve()
         if not root.is_dir():
             raise FileNotFoundError(f"Data directory not found: {root}")
         files.update(root.rglob("*.taqstream"))
@@ -38,6 +39,7 @@ def discover_episodes(data_dirs):
 
 
 def read_episode(path, smooth_window):
+    path = resolve_project_path(path)
     _, scenario, uid = chunk_identity(path)
     payload = load_torch_payload(path)
     metadata = payload["metadata"]
@@ -130,7 +132,7 @@ def prepare_initialization(args):
     info = {"mode": "from_scratch", "normalization_source": "training_episodes",
             "optimizer_state": "new_AdamW"}
     if args.init_checkpoint:
-        path = Path(args.init_checkpoint).expanduser().resolve(strict=True)
+        path = resolve_project_path(args.init_checkpoint).resolve(strict=True)
         model, checkpoint = load_legacy_checkpoint(path)
         preprocessing = checkpoint.get("preprocessing", {})
         smoothing = preprocessing.get("pos_smooth_window")
@@ -264,7 +266,7 @@ def main():
         mean = initialized_model.input_mean.detach().cpu().flatten().clone()
         std = initialized_model.input_std.detach().cpu().flatten().clone()
     counts = {name: dataset.counts() for name, dataset in datasets.items()}
-    save_dir = Path(args.save_dir).expanduser() / datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d_%H%M%S_%f")
+    save_dir = resolve_project_path(args.save_dir) / datetime.now(ZoneInfo("Asia/Shanghai")).strftime("%Y%m%d_%H%M%S_%f")
     save_dir.mkdir(parents=True, exist_ok=False)
     protocol = {
         "context": "full_episode", "backpropagation": "full_episode_bptt",

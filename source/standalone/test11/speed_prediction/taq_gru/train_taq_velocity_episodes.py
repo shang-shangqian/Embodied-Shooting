@@ -27,6 +27,7 @@ from ..common.time_aware_velocity_data import (
     taq_model_config_from_checkpoint,
 )
 from ..legacy_gru.train_gru_velocity_episodes import FrameMetrics
+from ..common.project_paths import load_project_json, resolve_project_path
 from .evaluate_taq_velocity_streaming import _segmented_baseline, _stream_tensors
 from .taq_velocity_training import masked_taq_velocity_loss
 from .time_aware_velocity_model import TimeAwareQualityGatedGRU
@@ -37,6 +38,7 @@ def write_json(path, value):
 
 
 def read_episode(path, model):
+    path = resolve_project_path(path)
     payload = load_torch_payload(path)
     metadata = payload.get("metadata", {})
     if metadata.get("episode_complete") is not True:
@@ -156,8 +158,8 @@ def run_epoch(model, loader, device, optimizer=None, baseline_only=False):
 
 
 def load_reference_splits(manifest_path):
-    manifest = json.loads(Path(manifest_path).read_text())
-    paths = {split: [Path(p).resolve() for p in manifest["files"][split]]
+    manifest = load_project_json(manifest_path)
+    paths = {split: [resolve_project_path(p).resolve() for p in manifest["files"][split]]
              for split in ("train", "val", "test")}
     if any(not value for value in paths.values()):
         raise ValueError("Reference manifest requires nonempty train/val/test")
@@ -200,6 +202,10 @@ def main():
     parser.add_argument("--baseline_version", choices=SUPPORTED_BASELINE_VERSIONS, default=DEFAULT_BASELINE_VERSION)
     parser.add_argument("--baseline_window_s", type=float, default=0.48)
     args = parser.parse_args()
+    args.reference_manifest = resolve_project_path(args.reference_manifest)
+    args.save_dir = resolve_project_path(args.save_dir)
+    if args.old_taq_checkpoint is not None:
+        args.old_taq_checkpoint = resolve_project_path(args.old_taq_checkpoint)
     if min(args.epochs, args.early_stop_patience, args.batch_size) < 1 or args.lr <= 0:
         parser.error("Training dimensions and learning rate must be positive")
     if args.baseline_window_s <= 0:

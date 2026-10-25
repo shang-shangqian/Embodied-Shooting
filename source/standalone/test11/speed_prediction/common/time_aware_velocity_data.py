@@ -14,6 +14,8 @@ from typing import Any, Iterable, Mapping, Sequence
 import torch
 from torch.utils.data import ConcatDataset, Dataset
 
+from .project_paths import resolve_project_path
+
 
 TAQ_SCHEMA_VERSION = "taq_velocity_v2"
 TAQ_LABEL_SEMANTICS = "target_relative_translation_velocity_yaw_base"
@@ -103,6 +105,7 @@ def robust_finite_difference(
 
 def load_torch_payload(path: str | Path) -> Any:
     """Load a local tensor payload on both old and new supported PyTorch releases."""
+    path = resolve_project_path(path)
     try:
         return torch.load(path, map_location="cpu", weights_only=False)
     except TypeError:  # PyTorch before the ``weights_only`` keyword.
