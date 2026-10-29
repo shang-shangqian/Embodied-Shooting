@@ -138,7 +138,7 @@
       <geom name="collision__TORSO__collisions_mesh_0_box" pos="0 0 0.009999999776482582" quat="1 0 0 0" type="box" size="0.25 0.05000000074505806 0.05999999865889549" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
       <geom name="collision__TORSO__collisions_mesh_1_box" pos="0 0 0.009999999776482582" quat="1 0 0 0" type="box" size="0.125 0.1000000014901161 0.05999999865889549" group="3" contype="1" conaffinity="2" rgba="0.1 0.7 0.2 0.35" />
       <geom name="visual__TORSO__Cube" type="mesh" mesh="TORSO__Cube" group="2" contype="0" conaffinity="0" rgba="0.72 0.74 0.78 1" />
-      <camera name="tracking_camera" mode="fixed" pos="0.25 -0.0005000000237487257 0.1029999852180481" quat="0.5 0.5 -0.5 -0.5" sensorsize="0.005760000228881836 0.003240000009536743" resolution="1024 576" focalpixel="1022.22216796875 1022.22216796875" principalpixel="0 0" ipd="0" />
+      <camera name="tracking_camera" mode="fixed" pos="0.25 -0.0005 0.103" quat="0.4999999991609844 0.5000000008390159 -0.5000000008390157 -0.4999999991609843" sensorsize="0.005760000228881836 0.003240000128746033" resolution="1024 576" focalpixel="1777.777709960938 1777.777709960938" principalpixel="0 0" ipd="0" />
     </body>
   </worldbody>
   <actuator>

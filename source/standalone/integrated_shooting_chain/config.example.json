@@ -1,0 +1,17 @@
+{
+  "camera": {
+    "intrinsics_json": "source/standalone/test_lk_ostrack/camera_intrinsics.json",
+    "rotation_base_from_camera": [[0, 0, 1], [1, 0, 0], [0, 1, 0]],
+    "camera_position_base_m": [0.23, 0.0, 0.073]
+  },
+  "models": {
+    "velocity_backend": "legacy_gru",
+    "velocity_checkpoint": "source/standalone/test11/speed_prediction/legacy_gru/full_episode_finetune_runs/20261013_163052_278937/best_model.pt",
+    "decision_torchscript": "path/to/exported/test7_2_weight/policy.pt"
+  },
+  "runtime": {
+    "history_window_s": 0.48,
+    "max_history_steps": 32,
+    "distance_range_m": [80.0, 150.0]
+  }
+}

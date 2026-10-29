@@ -33,6 +33,7 @@ mujoco_sim/
 | `analyze_mujoco_walk.py` | 已保存轨迹的接触和航向分析 | `isaac_lab_232` |
 | `check_lidar_source_parity.py` | 对照 Isaac 源函数检查扫描模式与后处理 | `isaac_lab_232` |
 | `play_mujoco_shooting.py` | 全链路感知、射击策略执行、评分与视频 | `isaac_lab_232` |
+| `eval_mujoco_salvo.py` | 站立机器人射击 100 个静态目标，含命中移除、切换、重试和视频 | `isaac_lab_232` |
 | `analyze_mujoco_shooting.py` | 离线检查跟踪、可见性和开火门控 | `isaac_lab_232` |
 
 例如查看行走程序参数：
@@ -53,6 +54,7 @@ Isaac 源码与输出目录。此前行走报告中记录的旧 `mjcf/` 路径�
 - [激光参数与接口](mjcf/lite3_with_turret/LIDAR.md)
 - [行走策略接口与运行命令](mjcf/lite3_with_turret/WALKING.md)
 - [全链路射击接口、运行与限制](SHOOTING.md)
+- [MuJoCo 百个静态目标的场景和运行命令](SALVO.md)
 
 独立程序可将 `source/standalone/integrated_shooting_chain/mujoco_sim` 加入
 `sys.path`，再导入 `mujoco_camera` 或 `mujoco_lidar`。通过父包导入时使用

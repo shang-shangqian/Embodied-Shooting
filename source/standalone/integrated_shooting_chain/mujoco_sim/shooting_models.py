@@ -55,6 +55,11 @@ class RecurrentShootingPolicy:
         self.calls = 0
 
     @torch.inference_mode()
+    def reset_actor(self):
+        """Clear only Actor GRU history on a target switch; preserve call counts and Critic."""
+        self.states[0].zero_()
+
+    @torch.inference_mode()
     def __call__(self, observation):
         observation = np.asarray(observation, dtype=np.float32)
         if observation.shape != (28,) or not np.isfinite(observation).all():

@@ -31,9 +31,7 @@
       576
     ],
     "parent_body": "TORSO",
-    "source": "isaac_camera_calibration.json",
-    "profile_id": "isaac_ordinary_ss_runtime_20261023",
-    "calibration_update_validation": "outputs/mujoco_camera_alignment_20261023/validation.json"
+    "source": "/home/jby/IsaacLab-2.3.2/source/standalone/test_lk_ostrack/multi_target_collect_env.py"
   },
   "stand_pd_smoke_test": {
     "duration_seconds": 4.999999999999916,

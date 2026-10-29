@@ -17,8 +17,6 @@ from yaw_control import checkpoint_contract, contracts_match, observation_contra
 import types
 
 from rl_perception_bridge_gt import install_rl_perception_bridge
-from turret_initialization import TurretInitConfig
-from dataclasses import asdict
 
 
 def _install_tanh_deterministic_player_patch() -> None:
@@ -904,30 +902,6 @@ def _case_to_probs(case_name: str) -> tuple[float, float, float, float]:
     raise ValueError("--case must be one of: ss, sd, ds, dd, mixed")
 
 
-def _install_turret_initialization_logging(base_env):
-    """Record actual reset angles without changing the environment's sampler."""
-    original = base_env._initialize_turret_joints
-    base_env._eval_turret_initialization_records = []
-    counts = [0]*base_env.num_envs
-
-    def initialize_with_log(self, env_ids_t, joint_pos, joint_vel):
-        result = original(env_ids_t, joint_pos, joint_vel)
-        angles = self._turret_reset_joint_pos[env_ids_t].detach().cpu()
-        for env_id, radians, degrees in zip(env_ids_t.detach().cpu().tolist(), angles.tolist(), angles.rad2deg().tolist()):
-            counts[env_id] += 1
-            record = dict(env_id=env_id, reset_number=counts[env_id], mode=self.cfg.turret_init_config.mode,
-                          joint_positions_rad=radians, joint_positions_deg=degrees)
-            if self.cfg.turret_init_config.mode == "random":
-                record['episode_number'] = int(self._turret_random_reset_counts[env_id])
-            self._eval_turret_initialization_records.append(record)
-            episode_number = record.get('episode_number', counts[env_id])
-            print(f'[RESET] env={env_id} ep#{episode_number:02d} turret_init={record["mode"]} '
-                  f'yaw={degrees[0]:.3f}deg pitch={degrees[1]:.3f}deg', flush=True)
-        return result
-
-    base_env._initialize_turret_joints = types.MethodType(initialize_with_log, base_env)
-
-
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--headless", action="store_true")
@@ -1029,17 +1003,6 @@ def main():
         help="Evaluation scenario.",
     )
 
-    parser.add_argument("--turret_init_mode", choices=("zero", "mixed", "random"), default=None,
-                        help="Default: uniform random for ordinary evaluation, zero for static salvo.")
-    parser.add_argument("--turret_init_yaw_deg", type=float, default=90.)
-    parser.add_argument("--turret_init_pitch_deg", type=float, default=60.)
-    parser.add_argument("--turret_init_probabilities", type=float, nargs=3, default=(.4, .4, .2),
-                        help="Mixed mode only: zero/general/near-limit probabilities.")
-    parser.add_argument("--turret_init_general_yaw_deg", type=float, default=90.)
-    parser.add_argument("--turret_init_general_pitch_deg", type=float, default=20.)
-    parser.add_argument("--turret_init_limit_margin_deg", type=float, default=5.)
-    parser.add_argument("--turret_init_limit_yaw_band_deg", type=float, default=25.)
-    parser.add_argument("--turret_init_limit_pitch_band_deg", type=float, default=15.)
     parser.add_argument("--target_speed_min", type=float, default=0.6, help="Minimum 3-D target speed magnitude (m/s).")
     parser.add_argument("--target_speed_max", type=float, default=5.0, help="Maximum 3-D target speed magnitude (m/s).")
     parser.add_argument("--fire_intent_threshold", type=float, default=0.50)
@@ -1076,8 +1039,7 @@ def main():
     parser.add_argument("--salvo_home_settle_frames", type=int, default=5)
     parser.add_argument("--salvo_home_timeout_s", type=float, default=8.,
                         help="End the episode with return_home_timeout if physical homing cannot settle in time.")
-    parser.add_argument("--salvo_seed", type=int, default=61,
-                        help="Static-salvo environment/RL-Games/OpenCV seed; also seeds ordinary random turret resets.")
+    parser.add_argument("--salvo_seed", type=int, default=61, help="Explicit environment/RL-Games/OpenCV seed for SS evaluation.")
     layout_args = parser.add_mutually_exclusive_group()
     layout_args.add_argument("--salvo_layout_in", help="Load a saved env-local target layout.")
     layout_args.add_argument("--salvo_layout_out", help="Save the first target layout to a new JSON file.")
@@ -1097,16 +1059,6 @@ def main():
     parser.add_argument("--pause_between_episodes", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--pause_seconds", type=float, default=2.0)
     args = parser.parse_args()
-    args.turret_init_mode = args.turret_init_mode or ("zero" if args.static_salvo else "random")
-    init_config = TurretInitConfig(
-        mode=args.turret_init_mode, probabilities=tuple(args.turret_init_probabilities),
-        general_yaw_deg=args.turret_init_general_yaw_deg,
-        general_pitch_deg=args.turret_init_general_pitch_deg,
-        limit_margin_deg=args.turret_init_limit_margin_deg,
-        limit_yaw_band_deg=args.turret_init_limit_yaw_band_deg,
-        limit_pitch_band_deg=args.turret_init_limit_pitch_band_deg,
-        random_yaw_deg=args.turret_init_yaw_deg, random_pitch_deg=args.turret_init_pitch_deg,
-        random_seed=args.salvo_seed)
     if args.max_shots_per_episode < 0:
         raise ValueError("--max_shots_per_episode must be >= 0")
     if args.static_salvo and args.max_shots_per_episode:
@@ -1208,8 +1160,6 @@ def main():
         print("[eval] deterministic action = tanh(mu)")
 
     env_cfg = TurretAimEnvCfg()
-    env_cfg.turret_init_config = init_config
-    print(f"[turret-init] {asdict(init_config)}; hold sampled position commands during warmup", flush=True)
     env_cfg.yaw_error_mode = args.yaw_error_mode
     aim_contract = observation_contract(args.yaw_error_mode, env_cfg.aim_error_obs_scale, env_cfg.aim_error_obs_clip)
     source_aim_contract = checkpoint_contract(checkpoint_path)
@@ -1284,7 +1234,6 @@ def main():
 
     env = gym.make(task_id, cfg=env_cfg, render_mode="rgb_array" if args.record_video else None, disable_env_checker=True)
     base_env: Any = env.unwrapped
-    _install_turret_initialization_logging(base_env)
 
     print("[eval] enable_air_drag =", bool(base_env.cfg.enable_air_drag))
     print("[eval] ballistic_max_time =", float(base_env.cfg.ballistic_max_time))
@@ -1635,15 +1584,10 @@ def main():
             diagnostics.close()
         if video_recorder is not None:
             video_recorder.close()
-            init_path = video_recorder.directory / "turret_initialization.json"
-            init_path.write_text(json.dumps(dict(config=asdict(init_config),
-                resets=base_env._eval_turret_initialization_records), indent=2, allow_nan=False)+"\n")
         if args.static_salvo:
             report_path.parent.mkdir(parents=True, exist_ok=True)
             records = base_env._static_salvo.records
             report = {
-                "turret_initialization": asdict(init_config),
-                "turret_reset_samples": base_env._eval_turret_initialization_records,
                 "scenario": "ss", "targets_per_episode": args.salvo_targets,
                 "ablation_group": args.salvo_ablation,
                 "hold_when_unready": ablation.config.hold_when_unready,

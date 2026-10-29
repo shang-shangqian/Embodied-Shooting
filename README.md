@@ -39,3 +39,25 @@ export ISAACLAB_PATH=/absolute/path/to/IsaacLab-2.3.2
 每次切换从本轮尚未尝试的可用目标中动态选择视觉估计距离最近的目标；失败目标进入下一轮重试池，
 本轮其余可用目标处理完后才参与重试。连续五枪未命中或选中后满 3 个仿真秒未命中即切出，
 暂缓至少 1 秒，每目标最多尝试 3 次。完整参数与报告字段见射击链 README。
+
+
+## 本地版本同步（2026-10-29）
+
+本次将四个目录内已发布的同名文件同步为本地版本，并补入 MuJoCo 百目标清场、
+模型根目录解析及速度验证工具；不包含权重、数据、视频和实验输出。
+炮塔初始化采用本地的 `zero` / `mixed` 实现。MuJoCo 相机采用本地采集器 fallback 标定，
+`fx=fy≈1777.78`，分辨率 1024×576，水平视场约 32.13°。
+
+MuJoCo 清场说明见 [SALVO.md](source/standalone/integrated_shooting_chain/mujoco_sim/SALVO.md)。
+在当前 Python 环境安装 MuJoCo 和推理依赖后，可直接运行现有入口：
+
+```bash
+python -m pip install -e '.[velocity,decision,ostrack]' 'mujoco>=3.2,<4'
+python source/standalone/integrated_shooting_chain/mujoco_sim/tools/eval_mujoco_salvo.py --dry-run --output outputs/salvo_preview
+```
+
+正式运行时使用 `--model-root /absolute/path/to/model-root` 指定模型文件根目录；
+若模型按配置中的相对路径放在本仓库下，可传入 `--model-root "$PWD"`。
+也可用入口参数覆盖决策、速度、OSTrack 和行走权重路径。
+`shooting_config.json` 中的数据盘默认路径来自开发机器，其他机器需要覆盖。
+本次仅做语法与上传文件检查，未加载权重或运行仿真。

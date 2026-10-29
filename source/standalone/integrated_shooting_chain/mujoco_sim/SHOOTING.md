@@ -1,9 +1,7 @@
 # MuJoCo 全链路射击测试
 
-**普通单目标 SS/SD 全链路评测：[`tools/eval_mujoco_single.py`](tools/eval_mujoco_single.py)；
-百目标 SS 清场评测：[`tools/eval_mujoco_salvo.py`](tools/eval_mujoco_salvo.py)。**
-参数、与 Isaac 评测的规则对齐、运行命令及已知差异见 [SALVO.md](SALVO.md)。
-下面描述的 `play_mujoco_shooting.py` 仍是单目标诊断入口。
+百个静态目标清场入口为 [`tools/eval_mujoco_salvo.py`](tools/eval_mujoco_salvo.py)，
+支持命中后移除、目标切换和失败重试。运行命令和规则见 [SALVO.md](SALVO.md)。
 
 入口：`tools/play_mujoco_shooting.py`。本次已接入实际模型推理，并完成首轮运行。
 epoch 114000 基线没有触发开火；五发微调模型站立时发射两次、行走时发射一次，
@@ -125,7 +123,7 @@ python source/standalone/integrated_shooting_chain/mujoco_sim/tools/analyze_mujo
 命中判定沿用原环境：初速 882 m/s、重力 9.81 m/s²、半径 0.35 m、0.4 s 内
 401 个采样点，按弹丸和目标同一时刻的轨迹段计算最近距离。默认没有空气阻力；
 实现同时保留 Mach-Cd/RK2 分支。它是同步预测评分，不是 MuJoCo 高速弹丸接触。
-单目标诊断中目标命中后保留，便于持续观察；尚未移植百目标选择、摧毁和重试流程。
+单目标诊断中目标命中后保留，便于持续观察；百目标入口支持选择、摧毁和重试流程。
 两类测试不应直接比较清场时间或总命中率。
 
 检查命令：

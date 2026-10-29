@@ -18,7 +18,10 @@ import time
 from types import SimpleNamespace
 
 # Reuse the existing local MuJoCo environment bootstrap and locomotion bridge.
-from play_mujoco_lite3 import LocomotionBridge, DEFAULT_POLICY, mujoco, np, torch
+if __package__:
+    from .play_mujoco_lite3 import LocomotionBridge, DEFAULT_POLICY, mujoco, np, torch
+else:
+    from play_mujoco_lite3 import LocomotionBridge, DEFAULT_POLICY, mujoco, np, torch
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE = ROOT.parents[3]
@@ -26,6 +29,7 @@ sys.path.insert(0, str(ROOT.parents[1]))
 from integrated_shooting_chain.mujoco_sim.shooting_models import (
     RecurrentShootingPolicy, ensure_opencv, make_device_ostrack,
 )
+from integrated_shooting_chain.mujoco_sim.model_paths import resolve_model_path
 cv2 = ensure_opencv()
 from integrated_shooting_chain.mujoco_sim.shooting import (
     MujocoShootingAdapter, ballistic_metrics, checkpoint_settings, yaw_rotation,
@@ -105,6 +109,10 @@ class PerceptionPipeline:
                 bbox_xyxy=transform_image_box(selected.bbox_xyxy, inverse),
                 yaw_rad=float(np.arctan2(xy[0], 1.)),
                 pitch_rad=float(np.arctan2(-xy[1], np.sqrt(1.+xy[0]**2))))
+        return self.estimate_selected(frame, data, adapter, selected)
+
+    def estimate_selected(self, frame, data, adapter, selected):
+        """Fuse a visual estimate with ray measurements; no target truth is accepted."""
         self.last_scan = self.lidar.scan(data, update_kinematics=False)
         position = np.full(3, np.nan)
         range_estimate = None
@@ -200,17 +208,22 @@ def run(args):
     cv2.setNumThreads(args.threads)
     torch.manual_seed(args.seed)
     config = json.loads(args.config.read_text())
+    model_root = (WORKSPACE/(args.model_root or config.get('model_root', WORKSPACE))).resolve()
+    config['model_root'] = str(model_root)
+    def model_path(value):
+        return resolve_model_path(value, model_root=model_root, project_root=WORKSPACE)
     if args.decision_checkpoint is not None:
         config['decision_checkpoint'] = str(args.decision_checkpoint)
         config['reference_report'] = None
-        training_path = (WORKSPACE/args.decision_checkpoint).resolve().parent.parent/'training_settings.json'
+        training_path = model_path(args.decision_checkpoint).parent.parent/'training_settings.json'
         if training_path.is_file():
             config['training_settings'] = str(training_path)
             training = json.loads(training_path.read_text())['arguments']
             if 'velocity_model' in training:
                 config['velocity_checkpoint'] = training['velocity_model']
-    for name in ('decision_checkpoint', 'velocity_checkpoint', 'ostrack_repo', 'ostrack_checkpoint'):
-        config[name] = str((WORKSPACE/config[name]).resolve())
+    config['locomotion_policy'] = str(args.locomotion_policy or config.get('locomotion_policy', DEFAULT_POLICY))
+    for name in ('decision_checkpoint', 'velocity_checkpoint', 'ostrack_repo', 'ostrack_checkpoint', 'locomotion_policy'):
+        config[name] = str(model_path(config[name]))
     args.output.mkdir(parents=True, exist_ok=False)
     settings = checkpoint_settings(config['decision_checkpoint'])
     print('[MODELS] decision='+config['decision_checkpoint'], flush=True)
@@ -225,7 +238,7 @@ def run(args):
     mujoco.mj_resetDataKeyframe(model, data, model.key('stand').id)
     adapter = MujocoShootingAdapter(model, control, data, settings=settings)
     legs = LocomotionBridge(model, control, hip_delay=0, knee_delay=4)
-    locomotion = torch.jit.load(str(args.locomotion_policy), map_location='cpu').eval()
+    locomotion = torch.jit.load(config['locomotion_policy'], map_location='cpu').eval()
     policy = RecurrentShootingPolicy(config['decision_checkpoint'], device=args.device)
     chain_config = ShootingChainConfig(target_distance_range_m=tuple(settings['target_radius_range']),
         target_speed_range_mps=tuple(settings['target_speed_range']))
@@ -365,7 +378,7 @@ def run(args):
                     'inference_device': args.device, 'mujoco_version': mujoco.__version__, 'seed': args.seed,
                     'model': str(ASSET/'scene_shooting.xml'), 'config': config,
                     'hashes': {name: sha256(config[name]) for name in ('decision_checkpoint', 'velocity_checkpoint', 'ostrack_checkpoint')},
-                    'robot_xml_sha256': sha256(ASSET/'robot.xml'), 'locomotion_policy_sha256': sha256(args.locomotion_policy),
+                    'robot_xml_sha256': sha256(ASSET/'robot.xml'), 'locomotion_policy_sha256': sha256(config['locomotion_policy']),
                     'ballistic_source_settings': {k: settings[k] for k in ('muzzle_speed', 'gravity_mps2', 'hit_radius', 'ballistic_max_time', 'ballistic_num_samples', 'enable_air_drag')},
                     'fire_settings': {k: settings[k] for k in ('fire_intent_threshold', 'fire_intent_hold_steps', 'fire_cooldown_steps', 'max_shots_per_episode')},
                     'integrator': args.integrator,
@@ -402,7 +415,8 @@ def run(args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--config', type=Path, default=ROOT/'shooting_config.json')
-    parser.add_argument('--decision-checkpoint', type=Path, help='Override only the shooting checkpoint; path is relative to the workspace.')
+    parser.add_argument('--decision-checkpoint', type=Path, help='Override the shooting checkpoint; relative paths use model-root.')
+    parser.add_argument('--model-root', type=Path, help='Override the model asset root from the config')
     parser.add_argument('--output', type=Path, required=True, help='New output directory; existing results are never overwritten.')
     parser.add_argument('--device', default='cpu')
     parser.add_argument('--threads', type=int, default=4)
@@ -417,7 +431,7 @@ def main():
     parser.add_argument('--walk-speed', type=float, default=0.)
     parser.add_argument('--walk-start', type=float, default=4.)
     parser.add_argument('--walk-ramp', type=float, default=1.)
-    parser.add_argument('--locomotion-policy', type=Path, default=DEFAULT_POLICY)
+    parser.add_argument('--locomotion-policy', type=Path, help='Override locomotion weights; relative to model-root')
     parser.add_argument('--video', action='store_true')
     parser.add_argument('--stabilize-camera', action='store_true', help='Rotate RGB to the first camera orientation using proprioception only, then map tracked bearings back.')
     args = parser.parse_args()

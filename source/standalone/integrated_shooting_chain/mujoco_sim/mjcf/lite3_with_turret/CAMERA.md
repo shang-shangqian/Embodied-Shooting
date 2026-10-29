@@ -1,40 +1,32 @@
-# Mounted camera matching ordinary Isaac evaluation
+# Mounted camera matching test_lk_ostrack
 
 The camera is named **tracking_camera**, is attached to **TORSO**, and is included
 in `robot.xml`, `scene.xml` and `scene_lidar_demo.xml`. It follows TORSO translation,
 roll, pitch and yaw. It does not turn with the turret joints.
 
-The default profile comes from the actual ordinary
-`test7_2_weight/turret_aim_env_gt.py` evaluation camera. IsaacLab/RTX was started
-and its TiledCamera K, runtime render-proxy attributes and TORSO-local mount were
-captured in `outputs/isaac_ss_camera_probe_20261023_v2/camera_parameters.json`.
-The small authoritative capture is bundled as `isaac_camera_calibration.json`;
-the original output directory is not needed at runtime. Its provenance and hash
-are retained in `camera_config.json` and `source_manifest.json`.
-
-Both the committed `robot.xml` and the model builder use this captured profile.
-Rebuilding no longer applies the collector's focal-length-10 fallback. Earlier
-MuJoCo evaluations used that narrower profile and must not be treated as having
-the current camera. No source USD is changed.
+The builder reads `test_lk_ostrack/multi_target_collect_env.py` and applies its
+actual `_ensure_vision_camera_prim` function to an anonymous USD session layer.
+This reproduces the local pinhole fallback and preserves the source mount while
+avoiding the unresolved remote H60YA asset. No source USD is saved or changed.
+The configuration and source hashes are saved in `camera_config.json`.
 
 ## Calibration
 
 | Parameter | Matched value |
 | --- | --- |
 | Resolution | 1024 x 576 |
-| USD focal length | 5.75 |
-| USD horizontal/vertical aperture | 5.760000228881836 / 3.240000009536743 |
-| Target fx / fy | 1022.22216796875 pixels |
+| USD focal length | 10.0 |
+| USD horizontal/vertical aperture | 5.76 / 3.24 |
+| Target fx / fy | 1777.7777099609375 pixels |
 | Target cx / cy | 512 / 288 pixels |
-| Approximate horizontal/vertical FOV | 53.21 / 31.47 degrees |
+| Approximate horizontal/vertical FOV | 32.13 / 18.40 degrees |
 | Near/far clipping | 0.1 / 1,000,000 metres |
-| Mount position in TORSO | (0.25, -0.0005000000237487257, 0.1029999852180481) metres |
-| Mount quaternion, USD/OpenGL wxyz | (0.5, 0.5, -0.5, -0.5) |
+| Mount position in TORSO | (0.25, -0.0005, 0.103) metres |
 | Nominal forward direction | TORSO +X |
 | Output | RGB uint8 HWC, optionally metric axial depth and geom IDs |
 
-The target K is the measured IsaacLab TiledCamera float32 output. The compiled
-MuJoCo K differs by less than 0.001 pixel due
+The K calculation follows IsaacLab's actual square-pixel intrinsic calculation
+and float32 storage. The compiled MuJoCo K differs by less than 0.001 pixel due
 to float32 sensor-size/focal representation. The wrapper exports the compiled K
 used by the renderer, so downstream projection uses that calibration.
 
@@ -43,11 +35,7 @@ converted to ROS optical right/down/forward by flipping camera Y and Z. The
 camera mounting position differs from the LiDAR position; the joint demo uses
 each sensor's own position. It does not reuse a co-located synthetic camera.
 
-The actual render proxy uses `projection=perspective`. The original SG2 prim's
-custom `cameraProjectionType=fisheyeOrthographic` is not copied to that proxy;
-it must not be used to introduce a fisheye model on the MuJoCo side.
-
-Source f_stop=0 means no depth of field. The focus-distance setting of 700 is
+Source f_stop=0 means no depth of field. The focus-distance setting of 400 is
 recorded but no optical focus simulation is added. No lens distortion, rolling
 shutter, exposure/noise model or Isaac RTX lighting reproduction is claimed.
 The remote camera **housing mesh** is still absent; a functional camera does
@@ -135,11 +123,11 @@ not an occlusion test.
 MUJOCO_GL=egl EGL_PLATFORM=surfaceless LIBGL_ALWAYS_SOFTWARE=1 python source/standalone/integrated_shooting_chain/mujoco_sim/tests/test_mujoco_camera.py
 ```
 
-Eight checks cover the measured ordinary Isaac K, rebuild persistence, TORSO mount and independence from turret
+Six checks cover the recorded Isaac K, TORSO mount and independence from turret
 angles, full base-pose changes, projection/yaw/pitch parity with the actual
 test_lk_ostrack CameraIntrinsics implementation, asymmetric rendered marker
-locations (detecting flips), actual rendering of a target at a 20-degree bearing,
-100 m target visibility and metric depth/capture mode reset. Full tracker accuracy and image-domain compatibility remain to be
+locations (detecting flips), 100 m target visibility and metric depth/capture
+mode reset. Full tracker accuracy and image-domain compatibility remain to be
 evaluated.
 
 MuJoCo's camera attributes and axis conventions are documented in the

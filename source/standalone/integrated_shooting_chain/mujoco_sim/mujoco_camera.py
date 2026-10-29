@@ -1,4 +1,4 @@
-"""Mounted RGB pinhole camera matching the ordinary Isaac evaluation profile.
+"""Mounted RGB pinhole camera matching the test_lk_ostrack calibration profile.
 
 Set MUJOCO_GL before importing mujoco for headless rendering. Geometry methods
 work without creating a graphics context. Camera outputs use RGB uint8 HWC and
@@ -70,15 +70,16 @@ class MujocoCameraSensor:
         self._option.sitegroup[:] = 0
 
     def describe(self):
-        """Report the compiled renderer calibration used by perception."""
+        """Record the actual camera calibration, including older config schemas."""
         fx, fy = self.intrinsic_matrix[0, 0], self.intrinsic_matrix[1, 1]
+        source = self.config.get('source', {})
         return dict(profile_id=self.config.get('profile_id'), projection='perspective',
             resolution=[self.width, self.height], intrinsic_matrix=self.intrinsic_matrix.tolist(),
             fov_deg=np.rad2deg(2*np.arctan([self.width/(2*fx), self.height/(2*fy)])).tolist(),
             position_body=self.model.cam_pos[self.camera_id].tolist(),
             quaternion_body_wxyz=self.model.cam_quat[self.camera_id].tolist(),
             clipping_range_m=[self.config['near'], self.config['far']],
-            calibration_sha256=self.config['source']['calibration_sha256'])
+            calibration_sha256=source.get('calibration_sha256', source.get('parameters_sha256')))
 
     def pose(self, data, *, update_kinematics=True):
         if update_kinematics:

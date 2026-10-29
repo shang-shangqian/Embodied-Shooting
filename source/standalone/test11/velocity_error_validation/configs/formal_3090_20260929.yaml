@@ -1,0 +1,20 @@
+# RTX 3090 formal collection: 16 parallel environments, no RGB snapshots.
+base_command: "/home/jby/miniconda3/envs/isaac_lab_232/bin/python source/standalone/test11/collect_vision_data.py"
+common_args: ["--headless", "--device", "cuda:0", "--save_episode_stream", "--split", "test", "--scenario", "sd", "--target_speed_min", "0.6", "--target_speed_max", "5.0", "--degradation_profile", "clean", "--num_envs", "16", "--num_steps", "3500", "--locomotion_policy", "logs/rsl_rl/deeprobotics_lite3_rtx_flat/2026-07-29_20-44-55_test7_2_weight_flat/exported/policy.pt", "--ostrack_repo", "source/standalone/test_lk_ostrack/ostrack/OSTrack-main", "--ostrack_checkpoint", "source/standalone/test_lk_ostrack/ostrack/OSTrack-main/output/checkpoints/OSTrack_ep0300.pth.tar"]
+condition_args: ["--validation_condition", "{condition}", "--pair_id", "{pair_id}", "--trajectory_seed", "{seed}", "--collection_run_id", "{pair_id}_{condition}"]
+conditions: [A, B, C, D]
+expected_conditions: [A, B, C, D]
+minimum_complete_pairs: 100
+minimum_valid_frames_per_condition: 10000
+trajectory_position_tolerance_m: 0.0001
+root_position_tolerance_m: 0.0001
+root_orientation_tolerance_rad: 0.0001
+root_velocity_tolerance: 0.0001
+fixed_camera_position_tolerance_m: 0.00001
+fixed_camera_orientation_tolerance_rad: 0.0001
+mounted_camera_position_tolerance_m: 0.00001
+mounted_camera_orientation_tolerance_rad: 0.0001
+fixed_camera_background_flow_median_px: 0.1
+fixed_camera_background_flow_p95_px: 0.5
+seeds: [72, 73, 74]
+output_root: "source/standalone/test11/velocity_error_validation/outputs/formal_fixed_camera_3090_20260929"

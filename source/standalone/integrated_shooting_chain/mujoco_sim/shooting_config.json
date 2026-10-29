@@ -1,4 +1,6 @@
 {
+  "model_root": "/mnt/A/hust_jby/IsaacLab-2.3.2",
+  "locomotion_policy": "logs/rsl_rl/deeprobotics_lite3_rtx_flat/2026-07-29_20-44-55_test7_2_weight_flat/exported/policy.pt",
   "reference_report": "source/standalone/integrated_shooting_chain/video/ss_round_nearest_no_video_20261021_162148/salvo_report.json",
   "decision_checkpoint": "runs/test7_2_weight/turret_aim_mixed_09-08-16-46-24/nn/last_turret_aim_ep_114000_rew__119.52544_.pth",
   "velocity_checkpoint": "source/standalone/test11/speed_prediction/gru_runs_v2/20261009_152810_116165/best_model.pt",
